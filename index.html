@@ -3,14 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#b85252">
+<meta name="theme-color" content="#0f6e68">
 <title>Sổ Chi Tiêu Cá Nhân</title>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Chi Tiêu Cá Nhân">
-<link rel="stylesheet" href="style.css?v=3">
+<link rel="stylesheet" href="style.css?v=4">
 </head>
 <body>
 
@@ -42,6 +42,9 @@
 
   <header class="topbar">
     <div class="month-total">
+      <!-- Nhãn nhận biết sổ. Màu và icon đã khác sổ gia đình, nhưng khi đã vào
+           trong app thì cần một chữ khẳng định rõ, tránh ghi nhầm khoản. -->
+      <span class="so-badge">CÁ NHÂN</span>
       <span class="month-label" id="month-label">Tháng này</span>
       <span class="month-amount" id="month-amount">—</span>
     </div>
@@ -246,7 +249,7 @@
   <div class="toast" id="toast" hidden></div>
 </div>
 
-<script src="logic.js?v=3"></script>
-<script src="app.js?v=3"></script>
+<script src="logic.js?v=4"></script>
+<script src="app.js?v=4"></script>
 </body>
 </html>
