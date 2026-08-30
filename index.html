@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#b85252">
+<title>Sổ Chi Tiêu Cá Nhân</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Chi Tiêu Cá Nhân">
+<link rel="stylesheet" href="style.css?v=1">
+</head>
+<body>
+
+<!-- Màn hình nhập PIN: chạy trước, chặn mọi thứ khác -->
+<div class="gate" id="gate">
+  <div class="gate-card">
+    <div class="gate-icon">🔒</div>
+    <h1 class="gate-title">Sổ Chi Tiêu Cá Nhân</h1>
+    <p class="gate-sub">Nhập mã PIN để mở sổ</p>
+    <input type="password" id="pin-input" class="pin-input"
+           inputmode="numeric" autocomplete="off" placeholder="••••••">
+    <p class="gate-error" id="gate-error" hidden></p>
+    <button type="button" class="btn-primary" id="pin-submit">Mở sổ</button>
+
+    <!-- Nhật ký lần thử gần nhất, lưu vào máy nên còn nguyên kể cả khi
+         trang tự nạp lại. Dùng để dò lỗi khi màn hình không báo gì. -->
+    <p class="gate-log" id="gate-log" hidden></p>
+
+    <!-- Số hiệu bản giúp biết máy đang chạy bản nào khi cần dò lỗi -->
+    <p class="gate-foot">
+      <span id="app-version">bản —</span>
+      <button type="button" class="link-btn" id="btn-reset">Tải lại bản mới</button>
+    </p>
+  </div>
+</div>
+
+<!-- Ứng dụng chính -->
+<div class="app" id="app" hidden>
+
+  <header class="topbar">
+    <div class="month-total">
+      <span class="month-label" id="month-label">Tháng này</span>
+      <span class="month-amount" id="month-amount">—</span>
+    </div>
+    <button type="button" class="icon-btn" id="btn-refresh" aria-label="Tải lại">↻</button>
+  </header>
+
+  <!-- Chuyển giữa các màn hình -->
+  <nav class="tabs">
+    <button type="button" class="tab on" id="tab-btn-nhap">Nhập</button>
+    <button type="button" class="tab" id="tab-btn-lo">Lọ</button>
+    <button type="button" class="tab" id="tab-btn-thongke">Thống kê</button>
+  </nav>
+
+  <!-- ===== Màn hình nhập ===== -->
+  <div id="tab-nhap">
+    <section class="entry">
+      <div class="chips kind" id="kinds"></div>
+
+      <div class="amount-row">
+        <input type="text" id="amount" class="amount-input"
+               inputmode="numeric" autocomplete="off" placeholder="0">
+        <span class="currency">đ</span>
+      </div>
+
+      <div class="chips" id="categories"></div>
+
+      <div class="date-row">
+        <label class="date-label" for="entry-date">Ngày</label>
+        <input type="date" id="entry-date" class="date-input">
+        <button type="button" class="link-btn" id="btn-homnay" hidden>về hôm nay</button>
+      </div>
+
+      <input type="text" id="note" class="note-input"
+             autocomplete="off" placeholder="Ghi chú (không bắt buộc)">
+
+      <div class="payer-row">
+        <span class="payer-label" id="payer-label">Người chi</span>
+        <div class="chips payer" id="payers"></div>
+      </div>
+
+      <p class="entry-error" id="entry-error" hidden></p>
+      <button type="button" class="btn-primary" id="btn-save">Lưu khoản chi</button>
+    </section>
+
+    <!-- Tổng theo người -->
+    <section class="by-person" id="by-person"></section>
+
+    <!-- Danh sách gần đây -->
+    <section class="recent">
+      <div class="recent-head">
+        <h2>Gần đây</h2>
+        <span class="pending" id="pending-badge" hidden></span>
+      </div>
+      <div id="recent-list" class="recent-list">
+        <p class="empty">Đang tải…</p>
+      </div>
+    </section>
+  </div>
+
+  <!-- ===== Màn hình bốn lọ ===== -->
+  <div id="tab-lo" hidden>
+    <section class="jars">
+      <div class="jar-head">
+        <span class="jar-month" id="jar-month">—</span>
+        <button type="button" class="link-btn" id="btn-tile">Chỉnh tỉ lệ</button>
+      </div>
+
+      <p class="jar-note" id="jar-sweep-note" hidden></p>
+
+      <div id="jar-list"></div>
+
+      <div class="stat-block" id="jar-assets"></div>
+
+      <button type="button" class="btn-outline" id="btn-move">Chuyển tiền giữa các lọ</button>
+
+      <div class="stat-block" id="jar-history"></div>
+    </section>
+  </div>
+
+  <!-- Hộp thoại chuyển tiền giữa các lọ -->
+  <div class="sheet" id="move-sheet" hidden>
+    <div class="sheet-card">
+      <h3 class="sheet-title">Chuyển tiền giữa các lọ</h3>
+
+      <label class="sheet-label" for="move-from">Từ lọ</label>
+      <select class="sheet-select" id="move-from"></select>
+
+      <label class="sheet-label" for="move-to">Sang lọ</label>
+      <select class="sheet-select" id="move-to"></select>
+
+      <label class="sheet-label" for="move-amount">Số tiền</label>
+      <input type="text" class="note-input" id="move-amount" inputmode="numeric" placeholder="0">
+
+      <label class="sheet-label" for="move-note">Ghi chú</label>
+      <input type="text" class="note-input" id="move-note" placeholder="Không bắt buộc">
+
+      <p class="sheet-warn" id="move-warn" hidden></p>
+      <p class="entry-error" id="move-error" hidden></p>
+
+      <div class="sheet-actions">
+        <button type="button" class="btn-ghost" id="move-cancel">Huỷ</button>
+        <button type="button" class="btn-primary" id="move-ok">Chuyển</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hộp thoại chi tiết một lọ -->
+  <div class="sheet" id="jar-sheet" hidden>
+    <div class="sheet-card">
+      <h3 class="sheet-title" id="jar-detail-name">—</h3>
+      <p class="sheet-sub" id="jar-detail-sum">—</p>
+      <div id="jar-detail-list"></div>
+      <div class="sheet-actions">
+        <button type="button" class="btn-ghost" id="jar-detail-close">Đóng</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hộp thoại sửa / xoá một khoản đã ghi -->
+  <div class="sheet" id="edit-sheet" hidden>
+    <div class="sheet-card">
+      <h3 class="sheet-title">Sửa khoản đã ghi</h3>
+      <p class="sheet-sub" id="edit-meta">—</p>
+
+      <p class="sheet-warn" id="edit-warn" hidden></p>
+
+      <label class="sheet-label" for="edit-amount">Số tiền</label>
+      <input type="text" class="note-input" id="edit-amount" inputmode="numeric" placeholder="0">
+
+      <label class="sheet-label" for="edit-date">Ngày</label>
+      <input type="date" class="sheet-select" id="edit-date">
+
+      <label class="sheet-label" for="edit-category">Danh mục</label>
+      <select class="sheet-select" id="edit-category"></select>
+
+      <!-- Sổ một người: giữ ô này để code sửa khoản vẫn ghi đúng cột "Người"
+           xuống Sheet, nhưng ẩn đi vì không có gì để chọn. -->
+      <label class="sheet-label" for="edit-payer" id="edit-payer-label" hidden>Người</label>
+      <select class="sheet-select" id="edit-payer" hidden></select>
+
+      <label class="sheet-label" for="edit-note">Ghi chú</label>
+      <input type="text" class="note-input" id="edit-note" placeholder="Không bắt buộc">
+
+      <p class="entry-error" id="edit-error" hidden></p>
+
+      <div class="sheet-actions">
+        <button type="button" class="btn-ghost" id="edit-cancel">Huỷ</button>
+        <button type="button" class="btn-primary" id="edit-save">Lưu</button>
+      </div>
+      <button type="button" class="btn-danger" id="edit-delete">Xoá khoản này</button>
+    </div>
+  </div>
+
+  <!-- Hộp thoại chỉnh tỉ lệ -->
+  <div class="sheet" id="ratio-sheet" hidden>
+    <div class="sheet-card">
+      <h3 class="sheet-title">Tỉ lệ chia khoản thu</h3>
+      <p class="sheet-sub">Đổi tỉ lệ chỉ áp dụng cho khoản thu ghi từ giờ trở đi. Các tháng cũ giữ nguyên.</p>
+
+      <div id="ratio-rows"></div>
+
+      <p class="ratio-total" id="ratio-total">—</p>
+      <p class="entry-error" id="ratio-error" hidden></p>
+
+      <div class="sheet-actions">
+        <button type="button" class="btn-ghost" id="ratio-cancel">Huỷ</button>
+        <button type="button" class="btn-primary" id="ratio-ok">Lưu tỉ lệ</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Màn hình thống kê ===== -->
+  <div id="tab-thongke" hidden>
+    <section class="stats">
+      <div class="chips period" id="stat-modes"></div>
+
+      <div class="period-nav">
+        <button type="button" class="nav-btn" id="stat-prev" aria-label="Kỳ trước">‹</button>
+        <span class="period-label" id="stat-label">—</span>
+        <button type="button" class="nav-btn" id="stat-next" aria-label="Kỳ sau">›</button>
+      </div>
+
+      <div class="stat-summary" id="stat-summary"></div>
+
+      <!-- Biểu đồ diễn biến theo tháng -->
+      <div class="stat-block chart-block">
+        <div class="chart-head">
+          <h3>Diễn biến theo tháng</h3>
+          <div class="chips chart-kind" id="chart-kind"></div>
+        </div>
+        <select class="sheet-select" id="chart-series"></select>
+        <div id="chart-area"></div>
+        <div class="chart-legend" id="chart-legend"></div>
+      </div>
+
+      <div class="stat-block" id="stat-by-income"></div>
+      <div class="stat-block" id="stat-by-cat"></div>
+      <div class="stat-block" id="stat-by-person"></div>
+    </section>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+</div>
+
+<script src="logic.js?v=1"></script>
+<script src="app.js?v=1"></script>
+</body>
+</html>
