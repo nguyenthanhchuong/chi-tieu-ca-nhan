@@ -1,0 +1,6 @@
+# Dữ liệu tài chính cá nhân — KHÔNG đẩy lên GitHub (repo là public)
+du-lieu-cu.json
+duyet-nhap-lieu.tsv
+
+# Máy chủ tạm để xem thử ở máy, không cần đẩy lên
+serve.ps1

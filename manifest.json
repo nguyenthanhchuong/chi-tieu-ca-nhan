@@ -1,0 +1,32 @@
+{
+  "name": "Sổ Chi Tiêu Cá Nhân",
+  "short_name": "Chi Tiêu CN",
+  "description": "Ghi chi tiêu cá nhân riêng, dữ liệu lưu về Google Sheet riêng",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fdf3f0",
+  "theme_color": "#b85252",
+  "lang": "vi",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
