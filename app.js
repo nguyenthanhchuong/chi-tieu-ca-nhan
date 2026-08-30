@@ -2,7 +2,7 @@
 // URL Apps Script Web App RIÊNG của sổ cá nhân — phải là deployment khác với
 // sổ gia đình, trỏ vào một Google Sheet khác, để hai sổ hoàn toàn tách biệt.
 // Deploy lại (New deployment) thì URL đổi, nhớ sửa ở đây.
-const API_URL = "DÁN_URL_APPS_SCRIPT_CỦA_SỔ_CÁ_NHÂN_VÀO_ĐÂY";
+const API_URL = "https://script.google.com/macros/s/AKfycbyojlwjaXl4iq4zguZFS0FtedtuCVjSxK_c55VYijDbATqdh7Lg655cAlhNSVYRIYsu/exec";
 
 // Mỗi danh mục trỏ đúng một lọ (xem LO_THEO_DANH_MUC trong logic.js).
 // Danh mục ở đây là chi tiêu RIÊNG: chợ búa, hoá đơn, đồ dùng gia đình
@@ -100,7 +100,7 @@ function initNgay() {
 
 // ===== Gọi API =====
 // Tăng mỗi lần sửa app, hiển thị ở màn hình PIN để biết máy đang chạy bản nào.
-const APP_VERSION = "1";
+const APP_VERSION = "2";
 
 // ===== Nhật ký dò lỗi =====
 // Ghi vào localStorage nên còn nguyên kể cả khi trang tự nạp lại — đây là
