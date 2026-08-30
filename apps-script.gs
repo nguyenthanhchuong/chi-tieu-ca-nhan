@@ -32,6 +32,63 @@ function layPin_() {
   return PropertiesService.getScriptProperties().getProperty("PIN");
 }
 
+// ===== Khoá tạm khi nhập sai PIN nhiều lần =====
+// Web App phải mở "Anyone" thì trang web mới gọi được, nên PIN là lớp chắn duy
+// nhất. Không có cơ chế này thì người lạ có URL (URL nằm trong repo public) có
+// thể dò PIN bằng cách thử liên tục không giới hạn.
+//
+// Đếm để trong CacheService: tự hết hạn, không phải dọn dẹp, và không đụng vào
+// Script Properties nơi cất PIN.
+const KHOA_BAC = [
+  { tuLan: 12, giay: 1800 },  // sai 12 lần trở lên -> khoá 30 phút
+  { tuLan:  8, giay:  300 },  // sai 8  lần trở lên -> khoá 5 phút
+  { tuLan:  5, giay:   60 }   // sai 5  lần trở lên -> khoá 1 phút
+];
+const CACHE_DEM = "pin_sai_lien_tiep";
+const CACHE_KHOA_DEN = "pin_khoa_den";
+const DEM_HET_HAN_GIAY = 3600;   // 1 tiếng không sai thêm thì quên chuyện cũ
+
+function cache_() { return CacheService.getScriptCache(); }
+
+// Còn đang bị khoá thì trả về số giây phải chờ, ngược lại trả 0.
+function conPhaiChoGiay_() {
+  const den = Number(cache_().get(CACHE_KHOA_DEN) || 0);
+  if (!den) return 0;
+  const con = Math.ceil((den - Date.now()) / 1000);
+  return con > 0 ? con : 0;
+}
+
+function ghiNhanSaiPin_() {
+  // Khoá script khi cộng dồn: kẻ dò PIN sẽ bắn nhiều yêu cầu song song, không
+  // có khoá thì các luồng cùng đọc một giá trị cũ và bộ đếm gần như đứng yên.
+  // Chỉ khoá ở nhánh SAI nên lần đăng nhập đúng không bị chậm thêm.
+  const lock = LockService.getScriptLock();
+  try { lock.waitLock(5000); } catch (err) { return 0; }
+  try {
+    const c = cache_();
+    const soLan = Number(c.get(CACHE_DEM) || 0) + 1;
+    c.put(CACHE_DEM, String(soLan), DEM_HET_HAN_GIAY);
+
+    const bac = KHOA_BAC.find(b => soLan >= b.tuLan);
+    if (bac) {
+      c.put(CACHE_KHOA_DEN, String(Date.now() + bac.giay * 1000), bac.giay + 60);
+      return bac.giay;
+    }
+    return 0;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function xoaDauVetSaiPin_() {
+  cache_().removeAll([CACHE_DEM, CACHE_KHOA_DEN]);
+}
+
+function moTaThoiGian_(giay) {
+  if (giay >= 60) return Math.ceil(giay / 60) + " phút";
+  return giay + " giây";
+}
+
 const SHEET_NAME = "ChiTieu";
 const SHEET_CAIDAT = "CaiDat";
 
@@ -87,9 +144,30 @@ function doPost(e) {
       });
     }
 
+    // Đang trong thời gian khoá thì chặn trước, KHÔNG so PIN. Nếu vẫn so, kẻ dò
+    // vẫn biết được mã nào đúng qua việc thử lúc sắp hết khoá.
+    const choGiay = conPhaiChoGiay_();
+    if (choGiay > 0) {
+      return reply({
+        ok: false,
+        error: "Sai PIN nhiều lần, tạm khoá. Thử lại sau " + moTaThoiGian_(choGiay) + ".",
+      });
+    }
+
     if (typeof body.pin !== "string" || body.pin !== pinThat) {
+      const khoaGiay = ghiNhanSaiPin_();
+      if (khoaGiay > 0) {
+        return reply({
+          ok: false,
+          error: "Sai PIN nhiều lần, tạm khoá. Thử lại sau " + moTaThoiGian_(khoaGiay) + ".",
+        });
+      }
       return reply({ ok: false, error: "PIN không đúng" });
     }
+
+    // Đúng PIN thì xoá sạch dấu vết, để vài lần gõ nhầm rải rác không cộng dồn
+    // rồi khoá oan người dùng thật.
+    xoaDauVetSaiPin_();
 
     if (body.action === "list") {
       return reply({ ok: true, entries: listEntries() });

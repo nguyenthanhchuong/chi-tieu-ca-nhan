@@ -787,6 +787,14 @@ test("sai PIN", () => {
   const e = new Error("PIN không đúng"); e.pinError = true;
   bang(Logic.friendlyError(e), "PIN không đúng.");
 });
+test("BỊ TẠM KHOÁ phải hiện nguyên văn kèm thời gian chờ", () => {
+  // Máy chủ gắn pinError cho mọi lỗi có chữ "PIN", kể cả thông báo khoá.
+  // Nếu nhánh pinError chạy trước, người dùng chỉ thấy "PIN không đúng."
+  // và cứ gõ lại mãi mà không biết đang bị khoá.
+  const e = new Error("Sai PIN nhiều lần, tạm khoá. Thử lại sau 5 phút.");
+  e.pinError = true;
+  bang(Logic.friendlyError(e), "Sai PIN nhiều lần, tạm khoá. Thử lại sau 5 phút.");
+});
 test("máy chủ lỗi 404", () => {
   bang(Logic.friendlyError(new Error("Máy chủ trả lỗi 404")),
        "Máy chủ đang bận, anh thử lại sau chút nhé.");

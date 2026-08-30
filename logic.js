@@ -446,6 +446,10 @@ const Logic = (function () {
   // Đổi lỗi kỹ thuật thành câu người dùng đọc hiểu được.
   function friendlyError(err) {
     const msg = String((err && err.message) || err || "");
+    // Thông báo tạm khoá phải hiện nguyên văn vì nó kèm thời gian chờ. Nếu để
+    // rơi vào nhánh pinError bên dưới, người dùng chỉ thấy "PIN không đúng" rồi
+    // gõ lại liên tục mà không hiểu vì sao mãi không vào được.
+    if (/tạm khoá/i.test(msg)) return msg;
     if (err && err.pinError) return "PIN không đúng.";
     if (/Failed to fetch|NetworkError|Load failed|network/i.test(msg)) {
       return "Không kết nối được, anh kiểm tra mạng giúp nhé.";
