@@ -103,7 +103,7 @@ function initNgay() {
 
 // ===== Gọi API =====
 // Tăng mỗi lần sửa app, hiển thị ở màn hình PIN để biết máy đang chạy bản nào.
-const APP_VERSION = "5";
+const APP_VERSION = "6";
 
 // ===== Nhật ký dò lỗi =====
 // Ghi vào localStorage nên còn nguyên kể cả khi trang tự nạp lại — đây là
@@ -370,15 +370,23 @@ function render() {
     list.innerHTML = "";
     recent.forEach(e => {
       const thu = laKhoanThu(e);
+      const chuyen = Logic.laChuyenLo(e);
       const row = document.createElement("div");
       row.className = "item" + (e.unsent ? " unsent" : "");
-      const meta = [e.date, e.payer, e.note].filter(Boolean).join(" · ");
+      // Khoản chuyển lọ tiền không rời túi, nên không được hiện giống hệt một
+      // khoản chi: chỉ ra chiều chuyển và dùng màu riêng, tránh nhìn nhầm.
+      const tenLo = k => (Logic.timLo(k) || {}).ten || k || "?";
+      const meta = chuyen
+        ? [e.date, `${tenLo(e.jar)} → ${tenLo(e.jarTo)}`, e.note].filter(Boolean).join(" · ")
+        : [e.date, e.payer, e.note].filter(Boolean).join(" · ");
+      const lopTien = thu ? " thu" : (chuyen ? " chuyen" : "");
+      const dauTien = thu ? "+" : (chuyen ? "⇄ " : "");
       row.innerHTML = `
         <div class="item-main">
           <div class="item-cat">${e.category || "Khác"}${e.unsent ? " ⏳" : ""}</div>
           <div class="item-meta">${meta}</div>
         </div>
-        <div class="item-amount${thu ? " thu" : ""}">${thu ? "+" : ""}${formatMoney(e.amount)} đ</div>`;
+        <div class="item-amount${lopTien}">${dauTien}${formatMoney(e.amount)} đ</div>`;
       // Khoản còn nằm trong hàng chờ thì chưa có trên Sheet, sửa chưa được.
       if (!e.unsent) {
         row.addEventListener("click", () => moHopSua(e.id));
