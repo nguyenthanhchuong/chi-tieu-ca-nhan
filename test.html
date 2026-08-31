@@ -783,6 +783,30 @@ test("mất mạng", () => {
   bang(Logic.friendlyError(new TypeError("Failed to fetch")),
        "Không kết nối được, anh kiểm tra mạng giúp nhé.");
 });
+// Lỗi thật đã gặp: tổng chi tháng ở đầu app viết !laKhoanThu(e) nên gom cả
+// khoản Chuyển vào chi, trong khi màn Thống kê dùng laKhoanChi nên loại ra.
+// Hai con số đá nhau mà nhìn vẫn "hợp lý" nên rất khó phát hiện.
+test("khoản Chuyển KHÔNG phải khoản chi", () => {
+  bang(Logic.laKhoanChi({ type: "Chuyển", amount: 500000 }), false);
+});
+test("khoản Chuyển KHÔNG phải khoản thu", () => {
+  bang(Logic.laKhoanThu({ type: "Chuyển", amount: 500000 }), false);
+});
+test("khoản Chi vẫn là khoản chi", () => {
+  bang(Logic.laKhoanChi({ type: "Chi", amount: 50000 }), true);
+});
+test("tổng chi tháng bỏ qua khoản Chuyển", () => {
+  const ds = [
+    { type: "Chi",     amount: 100000 },
+    { type: "Chuyển",  amount: 900000 },   // chuyển lọ, tiền không rời túi
+    { type: "Thu",     amount: 300000 },
+    { type: "Chi",     amount:  50000 }
+  ];
+  const tong = ds.filter(Logic.laKhoanChi)
+                 .reduce((s, e) => s + e.amount, 0);
+  bang(tong, 150000);
+});
+
 test("sai PIN", () => {
   const e = new Error("PIN không đúng"); e.pinError = true;
   bang(Logic.friendlyError(e), "PIN không đúng.");
