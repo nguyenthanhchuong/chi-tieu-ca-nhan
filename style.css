@@ -709,6 +709,9 @@ body {
 }
 .item-amount { font-size: 15px; font-weight: 700; white-space: nowrap; }
 .item-amount.thu { color: var(--thu); }
+/* Chuyển lọ: tiền không ra khỏi túi, nên làm nhạt và bỏ đậm để không bị đọc
+   nhầm thành một khoản chi có sức nặng ngang các khoản khác. */
+.item-amount.chuyen { color: var(--muted); font-weight: 600; }
 .empty { padding: 24px 16px; text-align: center; font-size: 13.5px; color: var(--muted); }
 
 /* ---------- Thông báo ---------- */
