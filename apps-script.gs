@@ -521,3 +521,30 @@ function nhacDaoHan() {
     "theo lãi suất mới, thường thấp hơn.\n"
   );
 }
+
+// Gửi thử MỘT email mẫu, để kiểm tra đường gửi mail có thông không.
+//
+// VÌ SAO CẦN HÀM NÀY: Google chỉ xin quyền cho đúng những gì đoạn code đang
+// chạy cần tới. Chạy caiDatNhacDaoHan thì nó chỉ xin quyền tạo lịch, KHÔNG xin
+// quyền gửi mail — vì hàm đó không đụng tới mail. Hậu quả: lịch tạo xong nhìn
+// rất ổn, nhưng 8h sáng nhacDaoHan chạy tới dòng MailApp là văng lỗi quyền,
+// im lặng, không ai biết. Chạy hàm này một lần là Google xin nốt quyền gửi
+// mail, đồng thời anh nhận được mail thật nên biết chắc đường gửi thông.
+function guiThuMotEmail() {
+  const ai = Session.getEffectiveUser().getEmail();
+  MailApp.sendEmail(
+    ai,
+    "[Sổ cá nhân] Thử nhắc đáo hạn — không phải nhắc thật",
+    "Đây là mail thử, không phải sổ tiết kiệm thật của anh.\n\n" +
+    "Nhận được mail này nghĩa là đường nhắc đáo hạn đã thông:\n" +
+    "  • Quyền gửi mail: đã cấp\n" +
+    "  • Nơi nhận: " + ai + "\n" +
+    "  • Còn gửi được hôm nay: " + MailApp.getRemainingDailyQuota() + " mail\n\n" +
+    "Mail nhắc thật sẽ có dạng như dưới đây:\n\n" +
+    "• Sổ 6 tháng Vietcombank — 100.000.000đ tại Vietcombank\n" +
+    "  Đáo hạn 2026-09-30 (còn 3 ngày), lãi suất 5.6%/năm\n\n" +
+    "Từ giờ Google sẽ tự kiểm mỗi sáng 8h và chỉ gửi khi có sổ " +
+    "còn dưới 7 ngày là đáo hạn.\n"
+  );
+  return "Đã gửi mail thử tới " + ai + ". Kiểm hộp thư nhé.";
+}
