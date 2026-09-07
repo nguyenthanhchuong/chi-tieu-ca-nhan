@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Chi Tiêu Cá Nhân">
-<link rel="stylesheet" href="style.css?v=8">
+<link rel="stylesheet" href="style.css?v=9">
 </head>
 <body>
 
@@ -56,6 +56,7 @@
     <button type="button" class="tab on" id="tab-btn-nhap">Nhập</button>
     <button type="button" class="tab" id="tab-btn-lo">Lọ</button>
     <button type="button" class="tab" id="tab-btn-vi">Ví</button>
+    <button type="button" class="tab" id="tab-btn-no">Nợ &amp; TK</button>
     <button type="button" class="tab" id="tab-btn-thongke">Thống kê</button>
   </nav>
 
@@ -163,6 +164,119 @@
 
       <div class="stat-block" id="vi-history"></div>
     </section>
+  </div>
+
+
+  <!-- ===== Màn hình vay nợ + sổ tiết kiệm =====
+       Hai thứ này đi cùng nhau vì cùng là tiền NGOÀI ví: đã rời ví nhưng vẫn
+       là của mình (cho vay, gửi tiết kiệm), hoặc đang ở trong ví nhưng không
+       phải của mình (đi vay). -->
+  <div id="tab-no" hidden>
+    <section class="jars">
+      <div class="jar-head">
+        <span class="jar-month">Vay nợ</span>
+        <button type="button" class="link-btn" id="btn-ghi-no">Ghi khoản nợ</button>
+      </div>
+
+      <div class="stat-block" id="no-tomtat"></div>
+      <div id="no-list"></div>
+
+      <div class="jar-head" style="margin-top:22px">
+        <span class="jar-month">Sổ tiết kiệm</span>
+        <button type="button" class="link-btn" id="btn-them-tk">Thêm sổ</button>
+      </div>
+
+      <div class="stat-block" id="tk-tomtat"></div>
+      <div id="tk-list"></div>
+
+      <p class="jar-note" id="tk-nhac-note"></p>
+    </section>
+  </div>
+
+  <!-- Hộp thoại ghi khoản vay nợ -->
+  <div class="sheet" id="no-sheet" hidden>
+    <div class="sheet-card">
+      <h3 class="sheet-title">Ghi khoản vay nợ</h3>
+      <p class="sheet-sub">Cho vay hay đi vay đều KHÔNG tính là thu/chi: tiền chỉ
+         đổi chỗ, chưa mất đi. Nhưng số dư ví vẫn thay đổi đúng.</p>
+
+      <label class="sheet-label" for="no-loai">Loại</label>
+      <select class="sheet-select" id="no-loai">
+        <option value="Cho vay">Cho vay — mình đưa tiền ra</option>
+        <option value="Thu nợ">Thu nợ — họ trả lại mình</option>
+        <option value="Đi vay">Đi vay — mình nhận tiền vào</option>
+        <option value="Trả nợ">Trả nợ — mình trả lại họ</option>
+      </select>
+
+      <label class="sheet-label" for="no-doituong">Ai</label>
+      <input type="text" class="note-input" id="no-doituong"
+             list="no-doituong-goi" placeholder="Tên người hoặc nơi vay">
+      <datalist id="no-doituong-goi"></datalist>
+
+      <label class="sheet-label" for="no-amount">Số tiền</label>
+      <input type="text" class="note-input" id="no-amount" inputmode="numeric" placeholder="0">
+
+      <label class="sheet-label" for="no-vi">Ví</label>
+      <select class="sheet-select" id="no-vi"></select>
+
+      <label class="sheet-label" for="no-date">Ngày</label>
+      <input type="date" class="sheet-select" id="no-date">
+
+      <label class="sheet-label" for="no-note">Ghi chú</label>
+      <input type="text" class="note-input" id="no-note" placeholder="Không bắt buộc">
+
+      <p class="entry-error" id="no-error" hidden></p>
+
+      <div class="sheet-actions">
+        <button type="button" class="btn-ghost" id="no-cancel">Huỷ</button>
+        <button type="button" class="btn-primary" id="no-ok">Ghi</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hộp thoại thêm/sửa sổ tiết kiệm -->
+  <div class="sheet" id="tk-sheet" hidden>
+    <div class="sheet-card">
+      <h3 class="sheet-title" id="tk-title">Thêm sổ tiết kiệm</h3>
+      <p class="sheet-sub">Sổ tiết kiệm chỉ để theo dõi và nhắc ngày đáo hạn.
+         Muốn tiền trừ khỏi ví thì ghi thêm một lệnh chuyển ví sang ví "Tiết kiệm".</p>
+
+      <label class="sheet-label" for="tk-ten">Tên sổ</label>
+      <input type="text" class="note-input" id="tk-ten" placeholder="VD: Sổ 6 tháng Vietcombank">
+
+      <label class="sheet-label" for="tk-noi">Gửi ở đâu</label>
+      <input type="text" class="note-input" id="tk-noi" placeholder="VD: Vietcombank">
+
+      <label class="sheet-label" for="tk-sotien">Số tiền gốc</label>
+      <input type="text" class="note-input" id="tk-sotien" inputmode="numeric" placeholder="0">
+
+      <label class="sheet-label" for="tk-laisuat">Lãi suất (%/năm)</label>
+      <input type="text" class="note-input" id="tk-laisuat" inputmode="decimal" placeholder="VD: 5.6">
+
+      <label class="sheet-label" for="tk-ngaygui">Ngày gửi</label>
+      <input type="date" class="sheet-select" id="tk-ngaygui">
+
+      <label class="sheet-label" for="tk-kyhan">Kỳ hạn (tháng)</label>
+      <select class="sheet-select" id="tk-kyhan">
+        <option value="1">1 tháng</option>
+        <option value="3">3 tháng</option>
+        <option value="6" selected>6 tháng</option>
+        <option value="9">9 tháng</option>
+        <option value="12">12 tháng</option>
+        <option value="18">18 tháng</option>
+        <option value="24">24 tháng</option>
+        <option value="36">36 tháng</option>
+      </select>
+
+      <p class="tk-xem-truoc" id="tk-xem-truoc"></p>
+      <p class="entry-error" id="tk-error" hidden></p>
+
+      <div class="sheet-actions">
+        <button type="button" class="btn-ghost" id="tk-cancel">Huỷ</button>
+        <button type="button" class="btn-primary" id="tk-ok">Lưu sổ</button>
+      </div>
+      <button type="button" class="btn-xoa-nho" id="tk-xoa" hidden>Xoá sổ này</button>
+    </div>
   </div>
 
   <!-- Hộp thoại chuyển tiền giữa các ví -->
@@ -362,7 +476,7 @@
   <div class="toast" id="toast" hidden></div>
 </div>
 
-<script src="logic.js?v=8"></script>
-<script src="app.js?v=8"></script>
+<script src="logic.js?v=9"></script>
+<script src="app.js?v=9"></script>
 </body>
 </html>

@@ -100,9 +100,10 @@ const SHEET_CAIDAT = "CaiDat";
 //            Phải lưu lại vì tỉ lệ có thể đổi về sau mà lịch sử thì không được đổi.
 //  Ví      : tiền ra/vào từ ví nào; lệnh chuyển ví thì đây là ví nguồn
 //  Ví đích : chỉ dùng cho lệnh chuyển ví
+//  Đối tượng : tên người/nơi vay nợ, chỉ dùng cho 4 loại vay nợ
 const HEADERS = ["ID", "Ngày", "Số tiền", "Danh mục", "Ghi chú", "Người chi",
                  "Thời điểm ghi", "Loại", "Lọ", "Lọ đích", "Phân bổ",
-                 "Ví", "Ví đích"];
+                 "Ví", "Ví đích", "Đối tượng"];
 
 function getSheet() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -240,7 +241,8 @@ function listEntries() {
       alloc: docPhanBo(r[10]),
       // Hàng cũ chưa có cột ví thì để trống, app sẽ đếm là "chưa gán ví"
       wallet: String(r[11] || ""),
-      walletTo: String(r[12] || "")
+      walletTo: String(r[12] || ""),
+      doiTuong: String(r[13] || "")
     };
   }).reverse();
 }
@@ -260,8 +262,13 @@ function docPhanBo(o) {
 
 // Loại hợp lệ. "Chuyển ví" là chuyển tiền giữa hai ví, KHÁC "Chuyển" (giữa
 // hai lọ) — trả sai loại thì app sẽ tính nhầm thành khoản chi.
+// Bốn loại vay nợ cũng phải có tên trong này: thiếu một cái thì rơi vào
+// nhánh mặc định "Chi" và khoản cho vay bị cộng thẳng vào chi tiêu tháng.
+const LOAI_HOP_LE = ["Thu", "Chuyển", "Chuyển ví",
+                     "Cho vay", "Thu nợ", "Đi vay", "Trả nợ"];
+
 function layLoai_(loai) {
-  return (loai === "Thu" || loai === "Chuyển" || loai === "Chuyển ví") ? loai : "Chi";
+  return LOAI_HOP_LE.indexOf(loai) >= 0 ? loai : "Chi";
 }
 
 function addEntry(entry) {
@@ -295,7 +302,8 @@ function addEntry(entry) {
     entry.jarTo || "",
     entry.alloc ? JSON.stringify(entry.alloc) : "",
     entry.wallet || "",
-    entry.walletTo || ""
+    entry.walletTo || "",
+    entry.doiTuong || ""
   ]);
 
   return { ok: true };
@@ -332,13 +340,14 @@ function suaKhoan(entry) {
     entry.payer || ""
   ]]);
 
-  sheet.getRange(dong, 8, 1, 6).setValues([[
+  sheet.getRange(dong, 8, 1, 7).setValues([[
     loai,
     entry.jar || "",
     entry.jarTo || "",
     entry.alloc ? JSON.stringify(entry.alloc) : "",
     entry.wallet || "",
-    entry.walletTo || ""
+    entry.walletTo || "",
+    entry.doiTuong || ""
   ]]);
 
   return { ok: true };
@@ -420,4 +429,95 @@ function formatDate(value) {
                                 Session.getScriptTimeZone(), "yyyy-MM-dd");
   }
   return String(value || "");
+}
+
+// ===== Nhắc sổ tiết kiệm sắp đến hạn =====
+// App là trang web tĩnh, không tự đẩy thông báo lên điện thoại được. Muốn được
+// nhắc khi KHÔNG mở app thì phải có thứ gì đó chạy nền — chỗ duy nhất sẵn có là
+// Apps Script, và cách rẻ nhất là gửi email cho chính mình.
+//
+// CÁCH BẬT (chỉ làm MỘT LẦN):
+//   Trong trình soạn Apps Script, chọn hàm caiDatNhacDaoHan ở ô hàm rồi bấm Chạy.
+//   Lần đầu Google sẽ hỏi cấp quyền gửi mail và tạo lịch chạy — bấm đồng ý.
+// TẮT: chạy hàm tatNhacDaoHan.
+
+const NGUONG_NHAC_NGAY = 7;      // nhắc khi còn dưới ngần này ngày
+const GIO_NHAC = 8;              // gửi mail lúc 8h sáng
+
+function caiDatNhacDaoHan() {
+  tatNhacDaoHan();               // tránh tạo trùng, chạy 2 lần thành 2 mail/ngày
+  ScriptApp.newTrigger("nhacDaoHan")
+    .timeBased()
+    .atHour(GIO_NHAC)
+    .everyDays(1)
+    .create();
+  return "Đã bật nhắc đáo hạn lúc " + GIO_NHAC + "h mỗi ngày.";
+}
+
+function tatNhacDaoHan() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === "nhacDaoHan") ScriptApp.deleteTrigger(t);
+  });
+  return "Đã tắt nhắc đáo hạn.";
+}
+
+function ngayKeyGs_(d) {
+  return Utilities.formatDate(d, Session.getScriptTimeZone(), "yyyy-MM-dd");
+}
+
+// Cộng tháng vào một ngày dạng "yyyy-MM-dd".
+// Gửi ngày 31 mà tháng đích chỉ có 30 ngày thì JS nhảy sang tháng sau,
+// phải kéo lùi về ngày cuối tháng đích. Giữ y hệt logic.js để hai bên
+// không bao giờ báo hai ngày đáo hạn khác nhau cho cùng một sổ.
+function themThangGs_(ngay, soThang) {
+  const d = new Date(ngay + "T00:00:00");
+  const ngayGoc = d.getDate();
+  d.setMonth(d.getMonth() + Number(soThang || 0));
+  if (d.getDate() < ngayGoc) d.setDate(0);
+  return ngayKeyGs_(d);
+}
+
+function tienVn_(n) {
+  return (Number(n) || 0).toLocaleString("vi-VN") + "đ";
+}
+
+function nhacDaoHan() {
+  const caiDat = docCaiDat();
+  const soList = (caiDat && caiDat.tietKiem) || [];
+  if (!soList.length) return;
+
+  const homNay = ngayKeyGs_(new Date());
+  const canNhac = [];
+
+  soList.forEach(function (s) {
+    if (!s || !s.ngayGui || !(Number(s.soTien) > 0)) return;
+    const dh = s.ngayDaoHan || themThangGs_(s.ngayGui, s.kyHanThang);
+    const conLai = Math.round(
+      (new Date(dh + "T00:00:00") - new Date(homNay + "T00:00:00")) / 86400000);
+    if (conLai <= NGUONG_NHAC_NGAY) canNhac.push({ so: s, dh: dh, conLai: conLai });
+  });
+
+  if (!canNhac.length) return;
+
+  canNhac.sort(function (a, b) { return a.conLai - b.conLai; });
+
+  const dong = canNhac.map(function (x) {
+    const khi = x.conLai < 0 ? "ĐÃ QUÁ HẠN " + (-x.conLai) + " ngày"
+              : x.conLai === 0 ? "ĐÁO HẠN HÔM NAY"
+              : "còn " + x.conLai + " ngày";
+    return "• " + (x.so.ten || "Sổ không tên") + " — " + tienVn_(x.so.soTien) +
+           " tại " + (x.so.noiGui || "?") + "\n" +
+           "  Đáo hạn " + x.dh + " (" + khi + "), lãi suất " +
+           (Number(x.so.laiSuat) || 0) + "%/năm";
+  }).join("\n\n");
+
+  // Gửi cho chủ sổ. getEffectiveUser là người đã cấp quyền chạy script,
+  // tức chính chủ — không phải người bấm nút trên web.
+  MailApp.sendEmail(
+    Session.getEffectiveUser().getEmail(),
+    "[Sổ cá nhân] " + canNhac.length + " sổ tiết kiệm sắp/đã đáo hạn",
+    "Nhắc đáo hạn ngày " + homNay + ":\n\n" + dong +
+    "\n\nĐến hạn nhớ tất toán hoặc gia hạn, để quên là ngân hàng tự quay vòng " +
+    "theo lãi suất mới, thường thấp hơn.\n"
+  );
 }

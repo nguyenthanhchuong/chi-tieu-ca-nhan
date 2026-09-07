@@ -988,5 +988,103 @@ body {
 }
 .vi-xoa:active { color: var(--danger); }
 
-/* 4 tab thì chữ phải nhỏ lại mới vừa màn hình điện thoại */
-.tabs .tab { font-size: 12.5px; padding: 10px 4px; }
+/* 5 tab thì chữ phải nhỏ lại mới vừa màn hình điện thoại */
+.tabs .tab { font-size: 11.5px; padding: 10px 2px; }
+
+/* ===== Vay nợ ===== */
+.no-hang {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 8px;
+}
+.no-than { flex: 1; min-width: 0; }
+.no-ten {
+  font-size: 13.5px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.no-chieu { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.no-so {
+  flex-shrink: 0;
+  text-align: right;
+  font-size: 14px;
+  font-weight: 700;
+}
+/* Hai chiều nợ phải khác màu rõ rệt. Cùng một con số 5 triệu mà một bên là
+   mình sắp được nhận, một bên là mình sắp phải trả — nhìn nhầm là tính sai
+   cả kế hoạch tiền. */
+.no-so.ho-no-minh { color: var(--thu); }
+.no-so.minh-no-ho { color: var(--danger); }
+.no-so.xong { color: var(--muted); font-weight: 600; }
+.no-chitiet { font-size: 10.5px; color: var(--muted); margin-top: 2px; font-weight: 400; }
+
+/* ===== Sổ tiết kiệm ===== */
+.tk-hang {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  border-left: 3px solid var(--line);
+}
+.tk-hang:active { transform: scale(0.99); }
+.tk-hang.sap-dao-han { border-left-color: #c98a1e; }
+.tk-hang.qua-han { border-left-color: var(--danger); }
+.tk-dong1 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.tk-ten { font-size: 13.5px; font-weight: 700; }
+.tk-goc { font-size: 13.5px; font-weight: 700; flex-shrink: 0; }
+.tk-dong2 {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 3px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.tk-han { flex-shrink: 0; font-weight: 600; }
+.tk-han.sap-dao-han { color: #c98a1e; }
+.tk-han.qua-han { color: var(--danger); }
+.tk-xem-truoc {
+  font-size: 11.5px;
+  color: var(--muted);
+  background: var(--accent-soft);
+  border-radius: 10px;
+  padding: 9px 11px;
+  margin-top: 12px;
+  line-height: 1.5;
+}
+
+/* Nút xoá phụ trong hộp thoại: cố ý nhỏ và nhạt, đặt dưới hàng nút chính,
+   để không bị bấm nhầm khi chỉ muốn sửa. */
+.btn-xoa-nho {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  padding: 9px;
+  font-family: inherit;
+  font-size: 12.5px;
+  color: var(--danger);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.no-nhom {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin: 16px 0 8px;
+}
