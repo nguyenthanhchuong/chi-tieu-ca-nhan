@@ -58,6 +58,11 @@ Sửa kèm:
 > **Việc anh cần làm:** mở Apps Script của sổ cá nhân, dán lại `apps-script.gs`,
 > rồi *Deploy → Manage deployments → sửa → Version: New version → Deploy*.
 > Sau đó chọn hàm `caiDatNhacDaoHan` và bấm **Chạy** một lần để bật email nhắc.
+>
+> **Rồi chạy tiếp hàm `guiThuMotEmail` một lần nữa.** Chạy `caiDatNhacDaoHan`
+> KHÔNG đủ: Google chỉ xin quyền cho đúng nhánh code đang chạy, mà hàm đó
+> không đụng tới mail nên quyền gửi mail không được xin. Trigger tạo ra nhìn
+> rất bình thường, nhưng 8h sáng sẽ văng lỗi quyền trong im lặng.
 
 ## v8 trở về trước
 
