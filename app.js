@@ -103,7 +103,7 @@ function initNgay() {
 
 // ===== Gọi API =====
 // Tăng mỗi lần sửa app, hiển thị ở màn hình PIN để biết máy đang chạy bản nào.
-const APP_VERSION = "7";
+const APP_VERSION = "8";
 
 // ===== Nhật ký dò lỗi =====
 // Ghi vào localStorage nên còn nguyên kể cả khi trang tự nạp lại — đây là
@@ -1129,6 +1129,8 @@ function renderStats() {
 
   renderChartControls();
   veBieuDo();
+
+  renderHanMuc();
 
   veThanh($("stat-by-income"), "Thu theo nguồn", kq.theoNguonThu, "thu", "nguonThu");
   veThanh($("stat-by-cat"), "Chi theo danh mục", kq.theoDanhMuc, "chi", "danhMucChi");
