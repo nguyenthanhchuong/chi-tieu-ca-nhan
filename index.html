@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Chi Tiêu Cá Nhân">
-<link rel="stylesheet" href="style.css?v=6">
+<link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
 
@@ -55,6 +55,7 @@
   <nav class="tabs">
     <button type="button" class="tab on" id="tab-btn-nhap">Nhập</button>
     <button type="button" class="tab" id="tab-btn-lo">Lọ</button>
+    <button type="button" class="tab" id="tab-btn-vi">Ví</button>
     <button type="button" class="tab" id="tab-btn-thongke">Thống kê</button>
   </nav>
 
@@ -85,6 +86,11 @@
         <div class="chips payer" id="payers"></div>
       </div>
 
+      <div class="payer-row">
+        <span class="payer-label">Từ ví</span>
+        <div class="chips payer" id="vis"></div>
+      </div>
+
       <p class="entry-error" id="entry-error" hidden></p>
       <button type="button" class="btn-primary" id="btn-save">Lưu khoản chi</button>
     </section>
@@ -95,9 +101,26 @@
     <!-- Danh sách gần đây -->
     <section class="recent">
       <div class="recent-head">
-        <h2>Gần đây</h2>
+        <h2 id="recent-title">Gần đây</h2>
         <span class="pending" id="pending-badge" hidden></span>
+        <button type="button" class="link-btn" id="btn-tim">Tìm khoản</button>
       </div>
+
+      <!-- Bảng tìm kiếm, mặc định ẩn -->
+      <div class="tim-box" id="tim-box" hidden>
+        <input type="text" id="tim-chu" class="note-input"
+               autocomplete="off" placeholder="Tìm theo ghi chú, danh mục, ví…">
+        <div class="chips tim-loai" id="tim-loai"></div>
+        <div class="tim-ngay">
+          <label>Từ <input type="date" id="tim-tu" class="date-input"></label>
+          <label>Đến <input type="date" id="tim-den" class="date-input"></label>
+        </div>
+        <div class="tim-chan">
+          <span class="tim-ketqua" id="tim-ketqua"></span>
+          <button type="button" class="link-btn" id="btn-xoa-tim">Xoá lọc</button>
+        </div>
+      </div>
+
       <div id="recent-list" class="recent-list">
         <p class="empty">Đang tải…</p>
       </div>
@@ -124,6 +147,90 @@
     </section>
   </div>
 
+  <!-- ===== Màn hình ví / nguồn tiền ===== -->
+  <div id="tab-vi" hidden>
+    <section class="jars">
+      <div class="jar-head">
+        <span class="jar-month">Tiền đang ở đâu</span>
+        <button type="button" class="link-btn" id="btn-caidat-vi">Cài đặt ví</button>
+      </div>
+
+      <p class="jar-note" id="vi-chuagan" hidden></p>
+
+      <div id="vi-list"></div>
+
+      <button type="button" class="btn-outline" id="btn-chuyen-vi">Chuyển tiền giữa các ví</button>
+
+      <div class="stat-block" id="vi-history"></div>
+    </section>
+  </div>
+
+  <!-- Hộp thoại chuyển tiền giữa các ví -->
+  <div class="sheet" id="chuyenvi-sheet" hidden>
+    <div class="sheet-card">
+      <h3 class="sheet-title">Chuyển tiền giữa các ví</h3>
+      <p class="sheet-sub">Ví dụ rút tiền từ ngân hàng ra tiền mặt. Tiền không rời
+         khỏi nhà nên khoản này không tính là chi tiêu.</p>
+
+      <label class="sheet-label" for="cv-from">Từ ví</label>
+      <select class="sheet-select" id="cv-from"></select>
+
+      <label class="sheet-label" for="cv-to">Sang ví</label>
+      <select class="sheet-select" id="cv-to"></select>
+
+      <label class="sheet-label" for="cv-amount">Số tiền</label>
+      <input type="text" class="note-input" id="cv-amount" inputmode="numeric" placeholder="0">
+
+      <label class="sheet-label" for="cv-date">Ngày</label>
+      <input type="date" class="sheet-select" id="cv-date">
+
+      <label class="sheet-label" for="cv-note">Ghi chú</label>
+      <input type="text" class="note-input" id="cv-note" placeholder="Không bắt buộc">
+
+      <p class="entry-error" id="cv-error" hidden></p>
+
+      <div class="sheet-actions">
+        <button type="button" class="btn-ghost" id="cv-cancel">Huỷ</button>
+        <button type="button" class="btn-primary" id="cv-ok">Chuyển</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hộp thoại cài đặt ví: danh sách ví và số dư đầu -->
+  <div class="sheet" id="caidatvi-sheet" hidden>
+    <div class="sheet-card">
+      <h3 class="sheet-title">Cài đặt ví</h3>
+      <p class="sheet-sub">Mỗi dòng một ví. Số dư đầu là số tiền đang có trong ví
+         tại thời điểm bắt đầu ghi sổ — để trống nếu tính từ 0.</p>
+
+      <div id="caidatvi-rows"></div>
+      <button type="button" class="link-btn" id="btn-them-vi">+ Thêm ví</button>
+
+      <p class="entry-error" id="caidatvi-error" hidden></p>
+
+      <div class="sheet-actions">
+        <button type="button" class="btn-ghost" id="caidatvi-cancel">Huỷ</button>
+        <button type="button" class="btn-primary" id="caidatvi-ok">Lưu</button>
+      </div>
+    </div>
+  </div>
+  <!-- Hộp đặt hạn mức chi tiêu theo danh mục -->
+  <div class="sheet" id="hanmuc-sheet" hidden>
+    <div class="sheet-card">
+      <h3 class="sheet-title">Hạn mức chi mỗi tháng</h3>
+      <p class="sheet-sub">Để trống hoặc 0 là không đặt hạn mức cho mục đó.
+         Hạn mức tính lại từ đầu mỗi tháng.</p>
+
+      <div id="hanmuc-rows"></div>
+
+      <p class="entry-error" id="hanmuc-error" hidden></p>
+
+      <div class="sheet-actions">
+        <button type="button" class="btn-ghost" id="hanmuc-cancel">Huỷ</button>
+        <button type="button" class="btn-primary" id="hanmuc-ok">Lưu hạn mức</button>
+      </div>
+    </div>
+  </div>
   <!-- Hộp thoại chuyển tiền giữa các lọ -->
   <div class="sheet" id="move-sheet" hidden>
     <div class="sheet-card">
@@ -185,6 +292,9 @@
       <label class="sheet-label" for="edit-payer" id="edit-payer-label" hidden>Người</label>
       <select class="sheet-select" id="edit-payer" hidden></select>
 
+      <label class="sheet-label" for="edit-wallet">Ví</label>
+      <select class="sheet-select" id="edit-wallet"></select>
+
       <label class="sheet-label" for="edit-note">Ghi chú</label>
       <input type="text" class="note-input" id="edit-note" placeholder="Không bắt buộc">
 
@@ -229,6 +339,9 @@
 
       <div class="stat-summary" id="stat-summary"></div>
 
+      <!-- Hạn mức chi tiêu — chỉ hiện khi đang xem theo Tháng -->
+      <div class="stat-block" id="hanmuc-block"></div>
+
       <!-- Biểu đồ diễn biến theo tháng -->
       <div class="stat-block chart-block">
         <div class="chart-head">
@@ -249,7 +362,7 @@
   <div class="toast" id="toast" hidden></div>
 </div>
 
-<script src="logic.js?v=6"></script>
-<script src="app.js?v=6"></script>
+<script src="logic.js?v=7"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>

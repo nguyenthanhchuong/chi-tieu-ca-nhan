@@ -98,8 +98,11 @@ const SHEET_CAIDAT = "CaiDat";
 //  Lọ đích : chỉ dùng cho lệnh chuyển
 //  Phân bổ : với khoản thu, lưu số tiền đã chia vào từng lọ tại thời điểm ghi.
 //            Phải lưu lại vì tỉ lệ có thể đổi về sau mà lịch sử thì không được đổi.
+//  Ví      : tiền ra/vào từ ví nào; lệnh chuyển ví thì đây là ví nguồn
+//  Ví đích : chỉ dùng cho lệnh chuyển ví
 const HEADERS = ["ID", "Ngày", "Số tiền", "Danh mục", "Ghi chú", "Người chi",
-                 "Thời điểm ghi", "Loại", "Lọ", "Lọ đích", "Phân bổ"];
+                 "Thời điểm ghi", "Loại", "Lọ", "Lọ đích", "Phân bổ",
+                 "Ví", "Ví đích"];
 
 function getSheet() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -234,7 +237,10 @@ function listEntries() {
       type: String(r[7] || "Chi"),
       jar: String(r[8] || ""),
       jarTo: String(r[9] || ""),
-      alloc: docPhanBo(r[10])
+      alloc: docPhanBo(r[10]),
+      // Hàng cũ chưa có cột ví thì để trống, app sẽ đếm là "chưa gán ví"
+      wallet: String(r[11] || ""),
+      walletTo: String(r[12] || "")
     };
   }).reverse();
 }
@@ -250,6 +256,12 @@ function docPhanBo(o) {
   } catch (err) {
     return null;
   }
+}
+
+// Loại hợp lệ. "Chuyển ví" là chuyển tiền giữa hai ví, KHÁC "Chuyển" (giữa
+// hai lọ) — trả sai loại thì app sẽ tính nhầm thành khoản chi.
+function layLoai_(loai) {
+  return (loai === "Thu" || loai === "Chuyển" || loai === "Chuyển ví") ? loai : "Chi";
 }
 
 function addEntry(entry) {
@@ -268,7 +280,7 @@ function addEntry(entry) {
     }
   }
 
-  const loai = (entry.type === "Thu" || entry.type === "Chuyển") ? entry.type : "Chi";
+  const loai = layLoai_(entry.type);
 
   sheet.appendRow([
     entry.id,
@@ -281,7 +293,9 @@ function addEntry(entry) {
     loai,
     entry.jar || "",
     entry.jarTo || "",
-    entry.alloc ? JSON.stringify(entry.alloc) : ""
+    entry.alloc ? JSON.stringify(entry.alloc) : "",
+    entry.wallet || "",
+    entry.walletTo || ""
   ]);
 
   return { ok: true };
@@ -307,7 +321,7 @@ function suaKhoan(entry) {
   const dong = timDongTheoId(sheet, entry.id);
   if (!dong) return { ok: false, error: "Không tìm thấy khoản này, có thể đã bị xoá" };
 
-  const loai = (entry.type === "Thu" || entry.type === "Chuyển") ? entry.type : "Chi";
+  const loai = layLoai_(entry.type);
 
   // Ghi lại từ cột Ngày (2) tới cột Danh mục/Ghi chú/Người, bỏ qua cột 7.
   sheet.getRange(dong, 2, 1, 5).setValues([[
@@ -318,11 +332,13 @@ function suaKhoan(entry) {
     entry.payer || ""
   ]]);
 
-  sheet.getRange(dong, 8, 1, 4).setValues([[
+  sheet.getRange(dong, 8, 1, 6).setValues([[
     loai,
     entry.jar || "",
     entry.jarTo || "",
-    entry.alloc ? JSON.stringify(entry.alloc) : ""
+    entry.alloc ? JSON.stringify(entry.alloc) : "",
+    entry.wallet || "",
+    entry.walletTo || ""
   ]]);
 
   return { ok: true };
