@@ -33,7 +33,13 @@ const Logic = (function () {
   }
 
   function laKhoanChi(e) {
-    return !laKhoanThu(e) && !laChuyenLo(e);
+    return !laKhoanThu(e) && !laChuyenLo(e) && !laChuyenVi(e);
+  }
+
+  // Chuyển tiền giữa hai VÍ (vd rút ngân hàng ra tiền mặt). Tiền không rời
+  // túi nên KHÔNG phải khoản chi.
+  function laChuyenVi(e) {
+    return e && e.type === "Chuyển ví";
   }
 
   // ===== Bốn chiếc lọ (bản cá nhân) =====
@@ -463,10 +469,243 @@ const Logic = (function () {
     return "Có trục trặc, anh thử lại giúp nhé.";
   }
 
+  // ===== Ví / nguồn tiền =====
+  // Ví trả lời câu hỏi "tiền đang NẰM Ở ĐÂU", khác hẳn lọ (tiền DÀNH CHO việc gì).
+  // Một khoản chi vừa trừ lọ Thiết yếu, vừa trừ ví Tiền mặt — hai chiều độc lập.
+  const VI_MAC_DINH = ["Tiền mặt", "Ngân hàng", "Momo", "Thẻ tín dụng"];
+
+  function danhSachVi(caiDat) {
+    const ds = caiDat && Array.isArray(caiDat.ds) ? caiDat.ds.filter(Boolean) : null;
+    return (ds && ds.length) ? ds : VI_MAC_DINH.slice();
+  }
+
+  // Số dư từng ví = số dư đầu + thu vào − chi ra + chuyển đến − chuyển đi.
+  // Cộng dồn từ đầu sổ, không theo tháng: ví là số dư thực tại một thời điểm.
+  // Khoản chuyển LỌ không đụng tới ví (tiền vẫn nằm nguyên chỗ cũ).
+  function soDuCacVi(khoan, caiDatVi) {
+    const ds = danhSachVi(caiDatVi);
+    const dau = (caiDatVi && caiDatVi.soDuDau) || {};
+    const kq = {};
+    ds.forEach(v => {
+      kq[v] = { ten: v, soDuDau: Number(dau[v]) || 0, thu: 0, chi: 0, den: 0, di: 0 };
+    });
+    // Khoản gắn ví đã bị xoá khỏi danh sách vẫn phải hiện, nếu không tiền
+    // sẽ "bốc hơi" mà không ai biết.
+    const baoDam = v => {
+      if (!v) return null;
+      if (!kq[v]) kq[v] = { ten: v, soDuDau: 0, thu: 0, chi: 0, den: 0, di: 0, ngoaiDs: true };
+      return kq[v];
+    };
+
+    let chuaGanVi = 0;
+    (khoan || []).forEach(e => {
+      const tien = Number(e.amount) || 0;
+      if (laChuyenLo(e)) return;                       // không ảnh hưởng ví
+      if (laChuyenVi(e)) {
+        const a = baoDam(e.wallet), b = baoDam(e.walletTo);
+        if (a) a.di += tien;
+        if (b) b.den += tien;
+        return;
+      }
+      if (!e.wallet) { chuaGanVi++; return; }          // khoản cũ chưa gán ví
+      const o = baoDam(e.wallet);
+      if (laKhoanThu(e)) o.thu += tien; else o.chi += tien;
+    });
+
+    Object.keys(kq).forEach(v => {
+      const o = kq[v];
+      o.con = o.soDuDau + o.thu - o.chi + o.den - o.di;
+    });
+    return { vi: kq, thuTu: Object.keys(kq), chuaGanVi };
+  }
+
+  // Kiểm tra trước khi cho chuyển giữa hai ví.
+  function kiemTraChuyenVi(viNguon, viDich, soTien) {
+    if (!viNguon || !viDich) return { duoc: false, loi: "Chọn ví nguồn và ví đích nhé." };
+    if (viNguon === viDich)  return { duoc: false, loi: "Hai ví phải khác nhau." };
+    if (!(Number(soTien) > 0)) return { duoc: false, loi: "Số tiền phải lớn hơn 0." };
+    return { duoc: true };
+  }
+
+  // ===== Hạn mức chi tiêu theo danh mục =====
+  // Khác với sáu lọ: lọ là CHIA TIỀN VÀO khi có thu, hạn mức là CHẶN TIỀN RA
+  // theo từng danh mục trong một tháng. Hai thứ bổ sung nhau, không trùng.
+  const NGUONG_SAP_VUOT = 0.8;   // từ 80% hạn mức trở lên là cảnh báo
+
+  // Tổng đã chi từng danh mục trong một tháng ("2026-08").
+  // Chỉ tính khoản chi thật; khoản thu và chuyển lọ không tính.
+  function daChiTheoMuc(danhSach, thang) {
+    const kq = {};
+    (danhSach || []).forEach(e => {
+      if (!laKhoanChi(e)) return;
+      if (thang && !String(e.date || "").startsWith(thang)) return;
+      const muc = e.category || "Khác";
+      kq[muc] = (kq[muc] || 0) + (Number(e.amount) || 0);
+    });
+    return kq;
+  }
+
+  // Lọ mà một khoản chi thuộc về. Dùng ĐÚNG quy tắc của soDuCacLo:
+  // ưu tiên lọ đã ghi trên khoản, không có thì suy từ danh mục — nếu khác
+  // nhau thì con số hạn mức sẽ đá với màn hình Lọ.
+  function loCuaKhoan(e) {
+    return e.jar || doanLo(e.category);
+  }
+
+  // Tổng đã chi từng LỌ trong một tháng.
+  function daChiTheoLo(danhSach, thang) {
+    const kq = {};
+    (danhSach || []).forEach(e => {
+      if (!laKhoanChi(e)) return;
+      if (thang && !String(e.date || "").startsWith(thang)) return;
+      const lo = loCuaKhoan(e);
+      kq[lo] = (kq[lo] || 0) + (Number(e.amount) || 0);
+    });
+    return kq;
+  }
+
+  // Hạn mức có hai tầng: theo lọ và theo mục nhỏ trong lọ.
+  // Chấp nhận cả dạng cũ (phẳng theo danh mục) để không vỡ dữ liệu đã lưu.
+  function chuanHoaHanMuc(hm) {
+    if (!hm || typeof hm !== "object") return { lo: {}, muc: {} };
+    if (hm.lo || hm.muc) return { lo: hm.lo || {}, muc: hm.muc || {} };
+    return { lo: {}, muc: hm };
+  }
+
+  function mucDoHanMuc(daChi, han) {
+    const tiLe = daChi / han;
+    if (tiLe > 1) return "vuot";
+    if (tiLe >= NGUONG_SAP_VUOT) return "sap-vuot";
+    return "an-toan";
+  }
+
+  function motDong(ten, han, daChi) {
+    return {
+      ten, hanMuc: han, daChi,
+      conLai: han - daChi,
+      phanTram: Math.round((daChi / han) * 100),
+      mucDo: mucDoHanMuc(daChi, han)
+    };
+  }
+
+  // Trả về danh sách LỌ, mỗi lọ kèm các mục con có đặt hạn mức.
+  // Lọ được hiện nếu bản thân nó có hạn mức HOẶC có mục con đặt hạn mức.
+  // Sắp xếp: vượt trước, rồi sắp vượt — cái cần chú ý nằm trên cùng.
+  function trangThaiHanMuc(danhSach, thang, hanMucTho) {
+    const hm = chuanHoaHanMuc(hanMucTho);
+    const chiMuc = daChiTheoMuc(danhSach, thang);
+    const chiLo = daChiTheoLo(danhSach, thang);
+    const thuTu = { "vuot": 0, "sap-vuot": 1, "an-toan": 2 };
+
+    const canHien = new Set();
+    Object.keys(hm.lo).forEach(k => { if (Number(hm.lo[k]) > 0) canHien.add(k); });
+    Object.keys(hm.muc).forEach(m => { if (Number(hm.muc[m]) > 0) canHien.add(doanLo(m)); });
+
+    const ds = [...canHien].map(loKey => {
+      const lo = timLo(loKey) || { key: loKey, ten: loKey };
+      const hanLo = Number(hm.lo[loKey]) > 0 ? Number(hm.lo[loKey]) : null;
+      const daChiLo = chiLo[loKey] || 0;
+
+      const mucCon = Object.keys(hm.muc)
+        .filter(m => Number(hm.muc[m]) > 0 && doanLo(m) === loKey)
+        .map(m => Object.assign(motDong(m, Number(hm.muc[m]), chiMuc[m] || 0), { muc: m }))
+        .sort((a, b) => (thuTu[a.mucDo] - thuTu[b.mucDo]) || (b.phanTram - a.phanTram));
+
+      const dong = hanLo
+        ? Object.assign(motDong(lo.ten, hanLo, daChiLo), { key: loKey, mucCon })
+        : { key: loKey, ten: lo.ten, hanMuc: null, daChi: daChiLo,
+            conLai: null, phanTram: null, mucDo: null, mucCon };
+      return dong;
+    });
+
+    // Lọ không đặt hạn mức riêng thì xếp theo mục con nặng nhất của nó
+    const hangCuaLo = x => x.mucDo ? thuTu[x.mucDo]
+      : (x.mucCon.length ? thuTu[x.mucCon[0].mucDo] : 3);
+    ds.sort((a, b) => (hangCuaLo(a) - hangCuaLo(b)) || ((b.phanTram || 0) - (a.phanTram || 0)));
+    return ds;
+  }
+
+  // Đếm gộp cả hai tầng để hiện một dòng tóm tắt.
+  function tomTatHanMuc(ds) {
+    let vuot = 0, sapVuot = 0, soLo = 0, soMuc = 0;
+    (ds || []).forEach(lo => {
+      if (lo.hanMuc) {
+        soLo++;
+        if (lo.mucDo === "vuot") vuot++;
+        else if (lo.mucDo === "sap-vuot") sapVuot++;
+      }
+      (lo.mucCon || []).forEach(m => {
+        soMuc++;
+        if (m.mucDo === "vuot") vuot++;
+        else if (m.mucDo === "sap-vuot") sapVuot++;
+      });
+    });
+    return { soLo, soMuc, vuot, sapVuot };
+  }
+
+  // ===== Tìm kiếm / lọc khoản =====
+  // Bỏ dấu tiếng Việt để gõ "an uong" vẫn tìm ra "Ăn uống".
+  function boDau(s) {
+    return String(s || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/đ/g, "d").replace(/Đ/g, "D")
+      .toLowerCase();
+  }
+
+  // dieuKien: { chu, loai: "tat-ca"|"thu"|"chi"|"chuyen", tu, den }
+  // Trả về mảng đã lọc, giữ nguyên thứ tự đầu vào.
+  function locKhoan(danhSach, dieuKien) {
+    const dk = dieuKien || {};
+    const chu = boDau(dk.chu).trim();
+    const loai = dk.loai || "tat-ca";
+    const tu = dk.tu || "";
+    const den = dk.den || "";
+
+    return (danhSach || []).filter(e => {
+      if (loai === "thu" && !laKhoanThu(e)) return false;
+      if (loai === "chuyen" && !laChuyenLo(e)) return false;
+      if (loai === "chi" && !laKhoanChi(e)) return false;
+
+      const ngay = String(e.date || "");
+      if (tu && ngay < tu) return false;
+      if (den && ngay > den) return false;
+
+      if (chu) {
+        // So khớp theo ĐẦU ÂM TIẾT, không phải chuỗi con bất kỳ.
+        // Lỗi thật đã gặp: dùng includes() thì tìm "an uong" lại ra khoản
+        // "Lương tháng 8", vì "thang" chứa "an" và "luong" chứa "uong".
+        const am = s => boDau(s).split(/[^a-z0-9]+/).filter(Boolean);
+        const kho = am([e.category, e.note, e.payer, e.jar, e.jarTo].join(" "));
+        const tuKhoa = am(chu);
+        // Mọi từ khoá đều phải là phần đầu của một âm tiết nào đó
+        if (!tuKhoa.every(t => kho.some(w => w.startsWith(t)))) return false;
+      }
+      return true;
+    });
+  }
+
+  // Tổng tiền của một danh sách, tách riêng thu và chi (bỏ qua khoản chuyển lọ
+  // vì tiền không rời túi).
+  function tongKetLoc(danhSach) {
+    let thu = 0, chi = 0, chuyen = 0;
+    (danhSach || []).forEach(e => {
+      const tien = Number(e.amount) || 0;
+      if (laChuyenLo(e)) chuyen += tien;
+      else if (laKhoanThu(e)) thu += tien;
+      else chi += tien;
+    });
+    return { thu, chi, chuyen, soKhoan: (danhSach || []).length };
+  }
+
   return {
     formatMoney, formatNgan, parseAmount, ngayKey, thangKey,
     chuoiThang, dienBienTheoThang, dienBienMuc,
-    laKhoanThu, laChuyenLo, laKhoanChi,
+    laKhoanThu, laChuyenLo, laChuyenVi, laKhoanChi,
+    VI_MAC_DINH, danhSachVi, soDuCacVi, kiemTraChuyenVi,
+    NGUONG_SAP_VUOT, daChiTheoMuc, daChiTheoLo, loCuaKhoan,
+    chuanHoaHanMuc, trangThaiHanMuc, tomTatHanMuc,
+    boDau, locKhoan, tongKetLoc,
     khoangKy, nhanKy, trongKhoang, tongHopKy, friendlyError,
     // Bốn chiếc lọ
     LOS, LO_MAC_DINH_NHAN_DU, timLo, tiLeMacDinh, doanLo,
