@@ -832,6 +832,168 @@ test("KHÔNG để lọt mã lỗi kỹ thuật ra màn hình", () => {
 
 // ===================================================================
 // Hiển thị kết quả
+
+// ===================================================================
+nhom("Vay nợ");
+
+const DS_NO = [
+  { id: "n1", date: "2026-09-01", amount: 20000000, type: "Cho vay", doiTuong: "Anh Hùng", wallet: "Ngân hàng" },
+  { id: "n2", date: "2026-09-05", amount: 5000000,  type: "Thu nợ",  doiTuong: "Anh Hùng", wallet: "Ngân hàng" },
+  { id: "n3", date: "2026-09-02", amount: 3000000,  type: "Đi vay",  doiTuong: "Mẹ",       wallet: "Tiền mặt" },
+  { id: "n4", date: "2026-09-06", amount: 3000000,  type: "Trả nợ",  doiTuong: "Mẹ",       wallet: "Tiền mặt" }
+];
+
+test("bốn loại vay nợ đều KHÔNG phải khoản chi", () => {
+  Logic.LOAI_NO.forEach(t => bang(Logic.laKhoanChi({ type: t, amount: 1 }), false, t));
+});
+
+test("vay nợ cũng không phải khoản thu", () => {
+  Logic.LOAI_NO.forEach(t => bang(Logic.laKhoanThu({ type: t, amount: 1 }), false, t));
+});
+
+test("cho vay và trả nợ làm tiền RỜI ví", () => {
+  bang(Logic.noLamTienRa({ type: "Cho vay" }), true);
+  bang(Logic.noLamTienRa({ type: "Trả nợ" }), true);
+  bang(Logic.noLamTienRa({ type: "Thu nợ" }), false);
+  bang(Logic.noLamTienRa({ type: "Đi vay" }), false);
+});
+
+test("số dư nợ theo từng người, đúng chiều", () => {
+  const ds = Logic.soDuNo(DS_NO);
+  const hung = ds.find(o => o.ten === "Anh Hùng");
+  bang(hung.con, 15000000);            // cho vay 20 − thu 5
+  bang(hung.chieu, "ho-no-minh");
+  const me = ds.find(o => o.ten === "Mẹ");
+  bang(me.con, 0);                     // đi vay 3 − trả 3
+  bang(me.chieu, "xong");
+});
+
+test("thiếu tên đối tượng thì gom vào một mối, không bỏ sót tiền", () => {
+  const ds = Logic.soDuNo([{ type: "Cho vay", amount: 1000000 }]);
+  bang(ds.length, 1);
+  bang(ds[0].ten, "Không ghi tên");
+  bang(ds[0].con, 1000000);
+});
+
+test("tóm tắt tách hai chiều nợ", () => {
+  const tt = Logic.tomTatNo(Logic.soDuNo(DS_NO));
+  bang(tt.hoNoMinh, 15000000);
+  bang(tt.minhNoHo, 0);
+  bang(tt.rong, 15000000);
+  bang(tt.soNguoi, 2);
+  bang(tt.xong, 1);
+});
+
+test("nợ KHÔNG được cộng vào chi tiêu của lọ", () => {
+  // Đúng cái bẫy: "Cho vay" không nằm trong danh mục nào nên doanLo trả về
+  // một lọ mặc định. Không chặn thì 20 triệu cho vay hiện thành đã tiêu.
+  const soDu = Logic.soDuCacLo(DS_NO, "2026-09", null);
+  const tongRa = Object.keys(soDu).reduce((s, k) => s + soDu[k].ra, 0);
+  bang(tongRa, 0);
+});
+
+test("nợ VẪN phải làm số dư ví thay đổi", () => {
+  const kq = Logic.soDuCacVi(DS_NO, { ds: ["Tiền mặt", "Ngân hàng"], soDuDau: {} });
+  bang(kq.vi["Ngân hàng"].con, -15000000);   // ra 20, vào 5
+  bang(kq.vi["Tiền mặt"].con, 0);            // vào 3, ra 3
+  bang(kq.chuaGanVi, 0);
+});
+
+test("lọc riêng được khoản nợ", () => {
+  bang(Logic.locKhoan(DS_NO, { loai: "no" }).length, 4);
+  bang(Logic.locKhoan(DS_NO, { loai: "chi" }).length, 0);
+  bang(Logic.locKhoan(DS_NO, { loai: "thu" }).length, 0);
+});
+
+test("tìm được theo tên người vay", () => {
+  const r = Logic.locKhoan(DS_NO, { chu: "hung" });
+  bang(r.length, 2);
+});
+
+test("tổng kết lọc để nợ ra bảng riêng, không lẫn vào chi", () => {
+  const t = Logic.tongKetLoc(DS_NO);
+  bang(t.chi, 0);
+  bang(t.thu, 0);
+  bang(t.no, 31000000);
+});
+
+// ===================================================================
+nhom("Sổ tiết kiệm");
+
+test("cộng tháng bình thường", () => {
+  bang(Logic.themThang("2026-03-15", 6), "2026-09-15");
+  bang(Logic.themThang("2026-09-07", 12), "2027-09-07");
+});
+
+test("gửi ngày cuối tháng, tháng đích ngắn hơn thì lùi về ngày cuối", () => {
+  // Không xử lý thì JS nhảy sang tháng sau: 31/01 + 1 tháng ra 03/03,
+  // báo đáo hạn muộn hơn thực tế 3 ngày.
+  bang(Logic.themThang("2026-01-31", 1), "2026-02-28");
+  bang(Logic.themThang("2026-08-31", 1), "2026-09-30");
+});
+
+test("ngày đáo hạn nhập tay thì ưu tiên hơn tính từ kỳ hạn", () => {
+  bang(Logic.ngayDaoHan({ ngayGui: "2026-03-15", kyHanThang: 6 }), "2026-09-15");
+  bang(Logic.ngayDaoHan({ ngayGui: "2026-03-15", kyHanThang: 6, ngayDaoHan: "2026-09-20" }),
+       "2026-09-20");
+});
+
+test("đếm ngày còn lại", () => {
+  bang(Logic.soNgayConLai("2026-09-15", "2026-09-07"), 8);
+  bang(Logic.soNgayConLai("2026-09-01", "2026-09-07"), -6);
+  bang(Logic.soNgayConLai("2026-09-07", "2026-09-07"), 0);
+});
+
+test("lãi tính đơn, không tính kép", () => {
+  // Sổ có kỳ hạn ở VN trả lãi cuối kỳ. 100tr, 5.6%/năm, 6 tháng = 2.8tr.
+  bang(Logic.laiDuKien({ soTien: 100000000, laiSuat: 5.6, kyHanThang: 6 }), 2800000);
+  bang(Logic.laiDuKien({ soTien: 0, laiSuat: 5.6, kyHanThang: 6 }), 0);
+});
+
+const DS_TK = [
+  { id: "a", ten: "Sổ 12T", soTien: 100000000, laiSuat: 6,   ngayGui: "2026-01-10", kyHanThang: 12 },
+  { id: "b", ten: "Sổ 6T",  soTien: 50000000,  laiSuat: 5.5, ngayGui: "2026-03-10", kyHanThang: 6 },
+  { id: "c", ten: "Sổ 3T",  soTien: 20000000,  laiSuat: 4,   ngayGui: "2026-06-11", kyHanThang: 3 }
+];
+
+test("sổ gần đáo hạn nhất xếp lên đầu", () => {
+  // Đáo hạn: a 2027-01-10, b 2026-09-10, c 2026-09-11
+  const ds = Logic.trangThaiTietKiem(DS_TK, "2026-09-07");
+  bang(ds.map(s => s.id), ["b", "c", "a"]);
+  bang(ds.map(s => s.conLaiNgay), [3, 4, 125]);
+});
+
+test("phân mức theo số ngày còn lại", () => {
+  const ds = Logic.trangThaiTietKiem(DS_TK, "2026-09-11");
+  const m = {};
+  ds.forEach(s => { m[s.id] = s.mucDo; });
+  bang(m.b, "qua-han");        // đáo hạn 2026-09-10, đã trôi qua 1 ngày
+  bang(m.c, "sap-dao-han");    // đáo hạn đúng hôm nay
+  bang(m.a, "con-han");        // đáo hạn 2027-01-10, còn xa
+  // Quá hạn phải nằm trên cùng, đó là sổ cần xử lý ngay
+  bang(ds[0].id, "b");
+});
+
+test("bỏ qua sổ số tiền 0, không đếm nhầm", () => {
+  const ds = Logic.trangThaiTietKiem(DS_TK.concat([{ id: "z", soTien: 0, ngayGui: "2026-01-01", kyHanThang: 6 }]));
+  bang(ds.length, 3);
+});
+
+test("tóm tắt cộng đúng gốc và lãi", () => {
+  const tt = Logic.tomTatTietKiem(Logic.trangThaiTietKiem(DS_TK, "2026-09-07"));
+  bang(tt.soSo, 3);
+  bang(tt.tongGoc, 170000000);
+  // 100tr×6%×1 + 50tr×5.5%×0.5 + 20tr×4%×0.25
+  bang(tt.tongLai, 6000000 + 1375000 + 200000);
+});
+
+test("danh sách rỗng không làm vỡ", () => {
+  bang(Logic.trangThaiTietKiem(null).length, 0);
+  bang(Logic.tomTatTietKiem(null).soSo, 0);
+  bang(Logic.soDuNo(null).length, 0);
+  bang(Logic.tomTatNo(null).soNguoi, 0);
+});
+
 (function veKetQua() {
   const dat = ketQua.filter(k => k.dat).length;
   const hong = ketQua.length - dat;

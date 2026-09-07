@@ -32,8 +32,27 @@ const Logic = (function () {
     return e && e.type === "Chuyển";
   }
 
+  // ===== Vay nợ =====
+  // Bốn loại, khác nhau ở CHIỀU TIỀN và CHIỀU NỢ:
+  //   Cho vay : tiền ra, họ nợ mình tăng
+  //   Thu nợ  : tiền vào, họ nợ mình giảm
+  //   Đi vay  : tiền vào, mình nợ họ tăng
+  //   Trả nợ  : tiền ra, mình nợ họ giảm
+  // KHÔNG cái nào là thu/chi: cho vay 20 triệu thì tiền vẫn của mình, chỉ đang
+  // nằm chỗ khác. Tính vào chi tiêu sẽ làm báo cáo sai hẳn.
+  const LOAI_NO = ["Cho vay", "Thu nợ", "Đi vay", "Trả nợ"];
+
+  function laKhoanNo(e) {
+    return !!(e && LOAI_NO.indexOf(e.type) >= 0);
+  }
+
+  // Khoản nợ làm tiền RỜI ví hay VÀO ví
+  function noLamTienRa(e) {
+    return e && (e.type === "Cho vay" || e.type === "Trả nợ");
+  }
+
   function laKhoanChi(e) {
-    return !laKhoanThu(e) && !laChuyenLo(e) && !laChuyenVi(e);
+    return !laKhoanThu(e) && !laChuyenLo(e) && !laChuyenVi(e) && !laKhoanNo(e);
   }
 
   // Chuyển tiền giữa hai VÍ (vd rút ngân hàng ra tiền mặt). Tiền không rời
@@ -137,7 +156,9 @@ const Logic = (function () {
         } else if (laChuyenLo(e)) {
           if (e.jarTo === lo.key) vao += Number(e.amount) || 0;
           if (e.jar === lo.key)   ra  += Number(e.amount) || 0;
-        } else if ((e.jar || doanLo(e.category)) === lo.key) {
+        } else if (laKhoanChi(e) && (e.jar || doanLo(e.category)) === lo.key) {
+          // laKhoanChi loại luôn chuyển ví và vay nợ: hai loại đó không phải
+          // tiêu tiền, cộng vào lọ sẽ thổi phồng số đã chi.
           ra += Number(e.amount) || 0;
         }
       });
@@ -178,7 +199,7 @@ const Logic = (function () {
           ra.push({ date: e.date, tien: Number(e.amount) || 0, chieu: "ra",
                     moTa: "Chuyển đi", note: e.note || "" });
         }
-      } else if ((e.jar || doanLo(e.category)) === loKey) {
+      } else if (laKhoanChi(e) && (e.jar || doanLo(e.category)) === loKey) {
         ra.push({ date: e.date, tien: Number(e.amount) || 0, chieu: "ra",
                   moTa: e.category || "Khác",
                   note: [e.payer, e.note].filter(Boolean).join(" · ") });
@@ -509,6 +530,12 @@ const Logic = (function () {
       }
       if (!e.wallet) { chuaGanVi++; return; }          // khoản cũ chưa gán ví
       const o = baoDam(e.wallet);
+      // Khoản vay nợ cũng làm tiền rời/vào ví, dù không phải thu chi.
+      // Bỏ qua thì cho vay 20 triệu mà số dư ví vẫn đứng yên.
+      if (laKhoanNo(e)) {
+        if (noLamTienRa(e)) o.di += tien; else o.den += tien;
+        return;
+      }
       if (laKhoanThu(e)) o.thu += tien; else o.chi += tien;
     });
 
@@ -526,6 +553,113 @@ const Logic = (function () {
     if (!(Number(soTien) > 0)) return { duoc: false, loi: "Số tiền phải lớn hơn 0." };
     return { duoc: true };
   }
+
+  // Số dư nợ theo từng đối tượng.
+  // con > 0 : người ta còn nợ mình
+  // con < 0 : mình còn nợ người ta
+  function soDuNo(khoan) {
+    const kq = {};
+    (khoan || []).forEach(e => {
+      if (!laKhoanNo(e)) return;
+      const ai = (e.doiTuong || "").trim() || "Không ghi tên";
+      const tien = Number(e.amount) || 0;
+      if (!kq[ai]) kq[ai] = { ten: ai, choVay: 0, thuNo: 0, diVay: 0, traNo: 0 };
+      if (e.type === "Cho vay") kq[ai].choVay += tien;
+      else if (e.type === "Thu nợ") kq[ai].thuNo += tien;
+      else if (e.type === "Đi vay") kq[ai].diVay += tien;
+      else if (e.type === "Trả nợ") kq[ai].traNo += tien;
+    });
+
+    const ds = Object.keys(kq).map(ai => {
+      const o = kq[ai];
+      o.con = (o.choVay - o.thuNo) - (o.diVay - o.traNo);
+      o.chieu = o.con > 0 ? "ho-no-minh" : (o.con < 0 ? "minh-no-ho" : "xong");
+      return o;
+    });
+    // Còn nợ để trên, đã tất toán xuống dưới; trong mỗi nhóm số lớn lên trước
+    ds.sort((a, b) => Math.abs(b.con) - Math.abs(a.con));
+    return ds;
+  }
+
+  function tomTatNo(ds) {
+    let hoNoMinh = 0, minhNoHo = 0, xong = 0;
+    (ds || []).forEach(o => {
+      if (o.con > 0) hoNoMinh += o.con;
+      else if (o.con < 0) minhNoHo += -o.con;
+      else xong++;
+    });
+    return { hoNoMinh, minhNoHo, rong: hoNoMinh - minhNoHo, soNguoi: (ds || []).length, xong };
+  }
+
+  // ===== Sổ tiết kiệm có kỳ hạn =====
+  // Khác lọ: lọ cho biết ĐỂ DÀNH bao nhiêu, sổ tiết kiệm cho biết khoản đó
+  // đang gửi ở đâu, lãi bao nhiêu, KHI NÀO lấy ra được.
+  const NGUONG_SAP_DAO_HAN = 7;   // ngày, dưới mức này thì cảnh báo
+
+  function themThang(ngay, soThang) {
+    const d = new Date(ngay + "T00:00:00");
+    const ngayGoc = d.getDate();
+    d.setMonth(d.getMonth() + Number(soThang || 0));
+    // Gửi ngày 31 mà tháng đích chỉ có 30 ngày thì JS nhảy sang tháng sau,
+    // phải kéo lùi về ngày cuối tháng đích.
+    if (d.getDate() < ngayGoc) d.setDate(0);
+    return ngayKey(d);
+  }
+
+  function ngayDaoHan(so) {
+    if (!so || !so.ngayGui) return "";
+    if (so.ngayDaoHan) return so.ngayDaoHan;      // nhập tay thì ưu tiên
+    return themThang(so.ngayGui, so.kyHanThang);
+  }
+
+  function soNgayConLai(denNgay, homNay) {
+    if (!denNgay) return null;
+    const a = new Date(denNgay + "T00:00:00");
+    const b = new Date((homNay || ngayKey(new Date())) + "T00:00:00");
+    return Math.round((a - b) / 86400000);
+  }
+
+  // Lãi đơn dự kiến khi giữ đủ kỳ hạn. Cố ý KHÔNG tính lãi kép: sổ có kỳ hạn
+  // ở Việt Nam trả lãi cuối kỳ, tính kép sẽ ra số cao hơn thực nhận.
+  function laiDuKien(so) {
+    const tien = Number(so && so.soTien) || 0;
+    const ls = Number(so && so.laiSuat) || 0;      // %/năm
+    const thang = Number(so && so.kyHanThang) || 0;
+    return Math.round(tien * (ls / 100) * (thang / 12));
+  }
+
+  function trangThaiTietKiem(danhSach, homNay) {
+    const nay = homNay || ngayKey(new Date());
+    const ds = (danhSach || []).filter(s => s && Number(s.soTien) > 0).map(s => {
+      const dh = ngayDaoHan(s);
+      const conLai = soNgayConLai(dh, nay);
+      let mucDo = "con-han";
+      if (conLai !== null && conLai < 0) mucDo = "qua-han";
+      else if (conLai !== null && conLai <= NGUONG_SAP_DAO_HAN) mucDo = "sap-dao-han";
+      return Object.assign({}, s, {
+        ngayDaoHan: dh,
+        conLaiNgay: conLai,
+        lai: laiDuKien(s),
+        tongNhan: (Number(s.soTien) || 0) + laiDuKien(s),
+        mucDo
+      });
+    });
+    const thuTu = { "qua-han": 0, "sap-dao-han": 1, "con-han": 2 };
+    ds.sort((a, b) => (thuTu[a.mucDo] - thuTu[b.mucDo]) || ((a.conLaiNgay || 0) - (b.conLaiNgay || 0)));
+    return ds;
+  }
+
+  function tomTatTietKiem(ds) {
+    const tongGoc = (ds || []).reduce((s, x) => s + (Number(x.soTien) || 0), 0);
+    const tongLai = (ds || []).reduce((s, x) => s + (x.lai || 0), 0);
+    return {
+      soSo: (ds || []).length,
+      tongGoc, tongLai,
+      quaHan: (ds || []).filter(x => x.mucDo === "qua-han").length,
+      sapDaoHan: (ds || []).filter(x => x.mucDo === "sap-dao-han").length
+    };
+  }
+
 
   // ===== Hạn mức chi tiêu theo danh mục =====
   // Khác với sáu lọ: lọ là CHIA TIỀN VÀO khi có thu, hạn mức là CHẶN TIỀN RA
@@ -666,6 +800,7 @@ const Logic = (function () {
       if (loai === "thu" && !laKhoanThu(e)) return false;
       if (loai === "chuyen" && !laChuyenLo(e)) return false;
       if (loai === "chi" && !laKhoanChi(e)) return false;
+      if (loai === "no" && !laKhoanNo(e)) return false;
 
       const ngay = String(e.date || "");
       if (tu && ngay < tu) return false;
@@ -676,7 +811,8 @@ const Logic = (function () {
         // Lỗi thật đã gặp: dùng includes() thì tìm "an uong" lại ra khoản
         // "Lương tháng 8", vì "thang" chứa "an" và "luong" chứa "uong".
         const am = s => boDau(s).split(/[^a-z0-9]+/).filter(Boolean);
-        const kho = am([e.category, e.note, e.payer, e.jar, e.jarTo].join(" "));
+        const kho = am([e.category, e.note, e.payer, e.jar, e.jarTo,
+                        e.wallet, e.walletTo, e.doiTuong, e.type].join(" "));
         const tuKhoa = am(chu);
         // Mọi từ khoá đều phải là phần đầu của một âm tiết nào đó
         if (!tuKhoa.every(t => kho.some(w => w.startsWith(t)))) return false;
@@ -688,20 +824,24 @@ const Logic = (function () {
   // Tổng tiền của một danh sách, tách riêng thu và chi (bỏ qua khoản chuyển lọ
   // vì tiền không rời túi).
   function tongKetLoc(danhSach) {
-    let thu = 0, chi = 0, chuyen = 0;
+    let thu = 0, chi = 0, chuyen = 0, no = 0;
     (danhSach || []).forEach(e => {
       const tien = Number(e.amount) || 0;
-      if (laChuyenLo(e)) chuyen += tien;
+      if (laChuyenLo(e) || laChuyenVi(e)) chuyen += tien;
+      else if (laKhoanNo(e)) no += tien;     // không phải thu, cũng không phải chi
       else if (laKhoanThu(e)) thu += tien;
       else chi += tien;
     });
-    return { thu, chi, chuyen, soKhoan: (danhSach || []).length };
+    return { thu, chi, chuyen, no, soKhoan: (danhSach || []).length };
   }
 
   return {
     formatMoney, formatNgan, parseAmount, ngayKey, thangKey,
     chuoiThang, dienBienTheoThang, dienBienMuc,
     laKhoanThu, laChuyenLo, laChuyenVi, laKhoanChi,
+    LOAI_NO, laKhoanNo, noLamTienRa, soDuNo, tomTatNo,
+    NGUONG_SAP_DAO_HAN, themThang, ngayDaoHan, soNgayConLai,
+    laiDuKien, trangThaiTietKiem, tomTatTietKiem,
     VI_MAC_DINH, danhSachVi, soDuCacVi, kiemTraChuyenVi,
     NGUONG_SAP_VUOT, daChiTheoMuc, daChiTheoLo, loCuaKhoan,
     chuanHoaHanMuc, trangThaiHanMuc, tomTatHanMuc,

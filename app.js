@@ -103,7 +103,7 @@ function initNgay() {
 
 // ===== Gọi API =====
 // Tăng mỗi lần sửa app, hiển thị ở màn hình PIN để biết máy đang chạy bản nào.
-const APP_VERSION = "8";
+const APP_VERSION = "9";
 
 // ===== Nhật ký dò lỗi =====
 // Ghi vào localStorage nên còn nguyên kể cả khi trang tự nạp lại — đây là
@@ -378,17 +378,25 @@ function render() {
     list.innerHTML = "";
     recent.forEach(e => {
       const thu = laKhoanThu(e);
-      const chuyen = Logic.laChuyenLo(e);
+      const chuyenVi = Logic.laChuyenVi(e);
+      const no = Logic.laKhoanNo(e);
+      const chuyen = Logic.laChuyenLo(e) || chuyenVi;
       const row = document.createElement("div");
       row.className = "item" + (e.unsent ? " unsent" : "");
       // Khoản chuyển lọ tiền không rời túi, nên không được hiện giống hệt một
       // khoản chi: chỉ ra chiều chuyển và dùng màu riêng, tránh nhìn nhầm.
       const tenLo = k => (Logic.timLo(k) || {}).ten || k || "?";
-      const meta = chuyen
+      const meta = chuyenVi
+        ? [e.date, `${e.wallet} → ${e.walletTo}`, e.note].filter(Boolean).join(" · ")
+        : chuyen
         ? [e.date, `${tenLo(e.jar)} → ${tenLo(e.jarTo)}`, e.note].filter(Boolean).join(" · ")
-        : [e.date, e.payer, e.note].filter(Boolean).join(" · ");
-      const lopTien = thu ? " thu" : (chuyen ? " chuyen" : "");
-      const dauTien = thu ? "+" : (chuyen ? "⇄ " : "");
+        : no
+        ? [e.date, e.doiTuong, e.wallet, e.note].filter(Boolean).join(" · ")
+        : [e.date, e.payer, e.wallet, e.note].filter(Boolean).join(" · ");
+      // Khoản vay nợ dùng chung màu "chuyển": tiền có đổi chỗ nhưng không
+      // phải thu cũng không phải chi, hiện màu chi là nhìn nhầm ngay.
+      const lopTien = thu ? " thu" : (chuyen || no ? " chuyen" : "");
+      const dauTien = thu ? "+" : (chuyen ? "⇄ " : (no ? (Logic.noLamTienRa(e) ? "↗ " : "↙ ") : ""));
       row.innerHTML = `
         <div class="item-main">
           <div class="item-cat">${e.category || "Khác"}${e.unsent ? " ⏳" : ""}</div>
@@ -414,6 +422,7 @@ function render() {
   renderStats();
   renderJars();
   renderVi();
+  renderNo();
 }
 
 // ===== Ví / nguồn tiền =====
@@ -629,6 +638,311 @@ function initVi() {
   }
 }
 
+// ===== Vay nợ =====
+// Bốn loại khoản, khác nhau ở chiều tiền và chiều nợ. Không loại nào là thu
+// hay chi: cho vay 20 triệu thì tiền vẫn của mình, chỉ đang nằm chỗ khác.
+function renderNo() {
+  const box = $("no-list");
+  if (!box) return;
+
+  const ds = Logic.soDuNo(tatCaKhoan());
+  const tt = Logic.tomTatNo(ds);
+
+  $("no-tomtat").innerHTML = ds.length ? `
+    <h3>Tổng quan</h3>
+    <div class="no-hang">
+      <div class="no-than">
+        <div class="no-ten">Người ta nợ mình</div>
+        <div class="no-chieu">tiền sẽ thu về</div>
+      </div>
+      <div class="no-so ho-no-minh">${formatMoney(tt.hoNoMinh)} đ</div>
+    </div>
+    <div class="no-hang">
+      <div class="no-than">
+        <div class="no-ten">Mình nợ người ta</div>
+        <div class="no-chieu">tiền sẽ phải trả</div>
+      </div>
+      <div class="no-so minh-no-ho">${formatMoney(tt.minhNoHo)} đ</div>
+    </div>
+    <div class="no-hang">
+      <div class="no-than">
+        <div class="no-ten">Còn lại</div>
+        <div class="no-chieu">${tt.soNguoi} đối tượng, ${tt.xong} đã tất toán</div>
+      </div>
+      <div class="no-so ${tt.rong > 0 ? "ho-no-minh" : (tt.rong < 0 ? "minh-no-ho" : "xong")}">${formatMoney(tt.rong)} đ</div>
+    </div>` : "";
+
+  if (!ds.length) {
+    box.innerHTML = '<p class="empty">Chưa ghi khoản vay nợ nào.</p>';
+    return;
+  }
+
+  const nhan = { "ho-no-minh": "còn nợ mình", "minh-no-ho": "mình còn nợ", "xong": "đã tất toán" };
+  box.innerHTML = `<h3 class="no-nhom">Theo từng người</h3>` + ds.map(o => {
+    // Ghi rõ cả bốn con số cộng dồn: nhìn thấy "cho vay 20tr, thu 5tr" thì
+    // mới tin được số dư 15tr, chứ chỉ một con số thì không kiểm được.
+    const chiTiet = [
+      o.choVay ? `cho vay ${formatMoney(o.choVay)}đ` : "",
+      o.thuNo ? `đã thu ${formatMoney(o.thuNo)}đ` : "",
+      o.diVay ? `đi vay ${formatMoney(o.diVay)}đ` : "",
+      o.traNo ? `đã trả ${formatMoney(o.traNo)}đ` : ""
+    ].filter(Boolean).join(" · ");
+    return `
+      <div class="no-hang">
+        <div class="no-than">
+          <div class="no-ten">${o.ten}</div>
+          <div class="no-chieu">${nhan[o.chieu]}</div>
+          <div class="no-chitiet">${chiTiet}</div>
+        </div>
+        <div class="no-so ${o.chieu}">${formatMoney(Math.abs(o.con))} đ</div>
+      </div>`;
+  }).join("");
+}
+
+function moHopNo() {
+  const ds = dsVi();
+  $("no-vi").innerHTML = ds.map(v => `<option value="${v}">${v}</option>`).join("");
+  if (viDangChon && ds.includes(viDangChon)) $("no-vi").value = viDangChon;
+
+  // Gợi ý tên đã từng ghi để không gõ mỗi lần một kiểu ("Anh Hùng" / "anh hung"),
+  // vì số dư nợ gom theo tên: gõ lệch một chữ là tách thành hai người.
+  const daCo = Logic.soDuNo(tatCaKhoan()).map(o => o.ten);
+  $("no-doituong-goi").innerHTML = daCo.map(t => `<option value="${t}"></option>`).join("");
+
+  $("no-loai").value = "Cho vay";
+  $("no-doituong").value = "";
+  $("no-amount").value = "";
+  $("no-note").value = "";
+  $("no-date").value = ngayHomNay();
+  $("no-error").hidden = true;
+  $("no-sheet").hidden = false;
+}
+
+async function luuNo() {
+  const loai = $("no-loai").value;
+  const ai = $("no-doituong").value.trim();
+  const tien = parseAmount($("no-amount").value);
+  const loi = $("no-error");
+
+  if (!ai) { loi.textContent = "Ghi tên người vay/cho vay nhé."; loi.hidden = false; return; }
+  if (!(tien > 0)) { loi.textContent = "Số tiền phải lớn hơn 0."; loi.hidden = false; return; }
+  loi.hidden = true;
+
+  const entry = {
+    id: "no-" + Date.now(),
+    date: $("no-date").value || ngayHomNay(),
+    amount: tien,
+    category: loai,
+    note: $("no-note").value.trim(),
+    payer: selectedPayer,
+    type: loai,
+    doiTuong: ai,
+    wallet: $("no-vi").value
+  };
+
+  const nut = $("no-ok");
+  nut.disabled = true;
+  nut.textContent = "Đang ghi…";
+  try {
+    await callApi("add", { entry }, { retries: 2 });
+    entries.unshift(entry);
+    $("no-sheet").hidden = true;
+    showToast(`Đã ghi ${loai.toLowerCase()} ${formatMoney(tien)} đ`);
+    render();
+    renderNo();
+  } catch (err) {
+    loi.textContent = friendlyError(err);
+    loi.hidden = false;
+  } finally {
+    nut.disabled = false;
+    nut.textContent = "Ghi";
+  }
+}
+
+// ===== Sổ tiết kiệm =====
+// Lưu trong cài đặt (key/value trên Sheet) chứ không phải bảng khoản chi: sổ
+// tiết kiệm là một TRẠNG THÁI đang tồn tại, không phải một lần tiền đổi chỗ.
+let dsTietKiem = [];
+let tkDangSua = -1;      // -1 là thêm mới
+
+function renderTietKiem() {
+  const box = $("tk-list");
+  if (!box) return;
+
+  const ds = Logic.trangThaiTietKiem(dsTietKiem);
+  const tt = Logic.tomTatTietKiem(ds);
+
+  $("tk-tomtat").innerHTML = ds.length ? `
+    <h3>Tổng quan</h3>
+    <div class="no-hang">
+      <div class="no-than">
+        <div class="no-ten">${tt.soSo} sổ đang gửi</div>
+        <div class="no-chieu">lãi dự kiến khi giữ đủ kỳ hạn ${formatMoney(tt.tongLai)}đ</div>
+      </div>
+      <div class="no-so ho-no-minh">${formatMoney(tt.tongGoc)} đ</div>
+    </div>` : "";
+
+  if (!ds.length) {
+    box.innerHTML = '<p class="empty">Chưa có sổ tiết kiệm nào.</p>';
+    return;
+  }
+
+  box.innerHTML = ds.map((s, i) => {
+    const khi = s.conLaiNgay < 0 ? `quá hạn ${-s.conLaiNgay} ngày`
+      : s.conLaiNgay === 0 ? "đáo hạn hôm nay"
+      : `còn ${s.conLaiNgay} ngày`;
+    return `
+      <div class="tk-hang ${s.mucDo}" data-i="${i}">
+        <div class="tk-dong1">
+          <span class="tk-ten">${s.ten || "Sổ không tên"}</span>
+          <span class="tk-goc">${formatMoney(s.soTien)} đ</span>
+        </div>
+        <div class="tk-dong2">
+          <span>${[s.noiGui, s.kyHanThang + " tháng", (Number(s.laiSuat) || 0) + "%/năm"].filter(Boolean).join(" · ")}</span>
+          <span class="tk-han ${s.mucDo}">${khi}</span>
+        </div>
+        <div class="tk-dong2">
+          <span>đáo hạn ${s.ngayDaoHan}</span>
+          <span>nhận về ${formatMoney(s.tongNhan)} đ</span>
+        </div>
+      </div>`;
+  }).join("");
+
+  box.querySelectorAll(".tk-hang").forEach(d => {
+    d.addEventListener("click", () => moHopTietKiem(Number(d.dataset.i)));
+  });
+
+  // Cảnh báo lặp lại ngay dưới danh sách: nhắc trong app chỉ ăn khi anh mở
+  // app, nên phải nói rõ có email nhắc chứ đừng để anh tưởng app tự báo.
+  const note = $("tk-nhac-note");
+  if (note) {
+    const gap = tt.quaHan + tt.sapDaoHan;
+    note.textContent = gap
+      ? `${gap} sổ sắp/đã đáo hạn. Google cũng gửi email nhắc lúc 8h sáng mỗi ngày.`
+      : "Google sẽ gửi email nhắc lúc 8h sáng khi có sổ còn dưới 7 ngày là đáo hạn.";
+  }
+}
+
+function moHopTietKiem(i) {
+  tkDangSua = (typeof i === "number" && i >= 0) ? i : -1;
+  // Danh sách hiển thị đã được sắp xếp lại theo mức độ, nên phải lấy sổ theo
+  // đúng bản đã sắp xếp — dùng chỉ số vào dsTietKiem gốc là sửa sai sổ.
+  const daSapXep = Logic.trangThaiTietKiem(dsTietKiem);
+  const s = tkDangSua >= 0 ? daSapXep[tkDangSua] : null;
+  if (s) tkDangSua = dsTietKiem.findIndex(x => x.id === s.id);
+
+  $("tk-title").textContent = s ? "Sửa sổ tiết kiệm" : "Thêm sổ tiết kiệm";
+  $("tk-ten").value = s ? (s.ten || "") : "";
+  $("tk-noi").value = s ? (s.noiGui || "") : "";
+  $("tk-sotien").value = s && s.soTien ? formatMoney(s.soTien) : "";
+  $("tk-laisuat").value = s && s.laiSuat ? String(s.laiSuat) : "";
+  $("tk-ngaygui").value = s ? (s.ngayGui || ngayHomNay()) : ngayHomNay();
+  $("tk-kyhan").value = s ? String(s.kyHanThang || 6) : "6";
+  $("tk-xoa").hidden = !s;
+  $("tk-error").hidden = true;
+  capNhatXemTruocTk();
+  $("tk-sheet").hidden = false;
+}
+
+// Xem trước ngày đáo hạn và tiền nhận về NGAY LÚC GÕ. Không có nó thì anh
+// phải lưu rồi mới biết mình chọn kỳ hạn sai.
+function capNhatXemTruocTk() {
+  const el = $("tk-xem-truoc");
+  if (!el) return;
+  const so = docHopTietKiem();
+  if (!so.ngayGui || !(so.soTien > 0)) { el.textContent = ""; return; }
+  const dh = Logic.ngayDaoHan(so);
+  const lai = Logic.laiDuKien(so);
+  el.textContent = `Đáo hạn ${dh} · lãi dự kiến ${formatMoney(lai)}đ · `
+    + `nhận về ${formatMoney(so.soTien + lai)}đ`;
+}
+
+function docHopTietKiem() {
+  return {
+    ten: $("tk-ten").value.trim(),
+    noiGui: $("tk-noi").value.trim(),
+    soTien: parseAmount($("tk-sotien").value),
+    laiSuat: Number(String($("tk-laisuat").value).replace(",", ".")) || 0,
+    ngayGui: $("tk-ngaygui").value,
+    kyHanThang: Number($("tk-kyhan").value) || 0
+  };
+}
+
+async function ghiDsTietKiem(moi, thongBao) {
+  const nut = $("tk-ok");
+  const loi = $("tk-error");
+  nut.disabled = true;
+  nut.textContent = "Đang lưu…";
+  try {
+    await callApi("setSettings", { settings: { tietKiem: moi } }, { retries: 2 });
+    dsTietKiem = moi;
+    $("tk-sheet").hidden = true;
+    showToast(thongBao);
+    renderTietKiem();
+  } catch (err) {
+    loi.textContent = friendlyError(err);
+    loi.hidden = false;
+  } finally {
+    nut.disabled = false;
+    nut.textContent = "Lưu sổ";
+  }
+}
+
+async function luuTietKiem() {
+  const so = docHopTietKiem();
+  const loi = $("tk-error");
+
+  if (!(so.soTien > 0)) { loi.textContent = "Số tiền gốc phải lớn hơn 0."; loi.hidden = false; return; }
+  if (!so.ngayGui) { loi.textContent = "Chọn ngày gửi nhé."; loi.hidden = false; return; }
+  if (!(so.kyHanThang > 0)) { loi.textContent = "Chọn kỳ hạn nhé."; loi.hidden = false; return; }
+  loi.hidden = true;
+
+  const moi = dsTietKiem.slice();
+  if (tkDangSua >= 0 && moi[tkDangSua]) {
+    moi[tkDangSua] = Object.assign({}, moi[tkDangSua], so);
+  } else {
+    // ID cố định để sửa/xoá không bị lệch khi danh sách được sắp xếp lại
+    moi.push(Object.assign({ id: "tk-" + Date.now() }, so));
+  }
+  await ghiDsTietKiem(moi, tkDangSua >= 0 ? "Đã sửa sổ" : "Đã thêm sổ");
+}
+
+async function xoaTietKiem() {
+  if (tkDangSua < 0 || !dsTietKiem[tkDangSua]) return;
+  const s = dsTietKiem[tkDangSua];
+  if (!confirm(`Xoá sổ "${s.ten || "không tên"}" (${formatMoney(s.soTien)}đ)?`)) return;
+  const moi = dsTietKiem.filter((_, i) => i !== tkDangSua);
+  await ghiDsTietKiem(moi, "Đã xoá sổ");
+}
+
+function initNo() {
+  if ($("btn-ghi-no")) $("btn-ghi-no").addEventListener("click", moHopNo);
+  if ($("no-cancel")) $("no-cancel").addEventListener("click", () => { $("no-sheet").hidden = true; });
+  if ($("no-ok")) $("no-ok").addEventListener("click", luuNo);
+  if ($("no-amount")) {
+    $("no-amount").addEventListener("input", e => {
+      const n = parseAmount(e.target.value);
+      e.target.value = n ? formatMoney(n) : "";
+    });
+  }
+
+  if ($("btn-them-tk")) $("btn-them-tk").addEventListener("click", () => moHopTietKiem(-1));
+  if ($("tk-cancel")) $("tk-cancel").addEventListener("click", () => { $("tk-sheet").hidden = true; });
+  if ($("tk-ok")) $("tk-ok").addEventListener("click", luuTietKiem);
+  if ($("tk-xoa")) $("tk-xoa").addEventListener("click", xoaTietKiem);
+  if ($("tk-sotien")) {
+    $("tk-sotien").addEventListener("input", e => {
+      const n = parseAmount(e.target.value);
+      e.target.value = n ? formatMoney(n) : "";
+      capNhatXemTruocTk();
+    });
+  }
+  ["tk-laisuat", "tk-ngaygui", "tk-kyhan"].forEach(id => {
+    if ($(id)) $(id).addEventListener("input", capNhatXemTruocTk);
+  });
+  if ($("tk-kyhan")) $("tk-kyhan").addEventListener("change", capNhatXemTruocTk);
+}
+
 // ===== Hạn mức chi tiêu =====
 let hanMuc = {};   // { "Ăn uống": 3000000, ... }, lấy từ Sheet cùng chỗ với tỉ lệ lọ
 
@@ -821,7 +1135,8 @@ const LOAI_LOC = [
   { key: "tat-ca", ten: "Tất cả" },
   { key: "chi",    ten: "Chi" },
   { key: "thu",    ten: "Thu" },
-  { key: "chuyen", ten: "Chuyển" }
+  { key: "chuyen", ten: "Chuyển" },
+  { key: "no",     ten: "Nợ" }
 ];
 let loaiLocDangChon = "tat-ca";
 
@@ -850,6 +1165,7 @@ function capNhatKetQuaLoc(ketQua, soHien) {
   if (t.chi) phan.push(`chi ${formatMoney(t.chi)}đ`);
   if (t.thu) phan.push(`thu ${formatMoney(t.thu)}đ`);
   if (t.chuyen) phan.push(`chuyển ${formatMoney(t.chuyen)}đ`);
+  if (t.no) phan.push(`vay nợ ${formatMoney(t.no)}đ`);
   if (soHien < t.soKhoan) phan.push(`(hiện ${soHien})`);
   o.textContent = phan.join(" · ");
 }
@@ -1231,9 +1547,12 @@ function moHopSua(id) {
 
   const laThu = laKhoanThu(e);
   const laChuyen = Logic.laChuyenLo(e);
+  const laNo = Logic.laKhoanNo(e);
 
   $("edit-meta").textContent =
-    `${laThu ? "Khoản thu" : laChuyen ? "Chuyển lọ" : "Khoản chi"} · ghi ngày ${e.date}`;
+    (laThu ? "Khoản thu" : laChuyen ? "Chuyển lọ"
+      : laNo ? `${e.type}${e.doiTuong ? " · " + e.doiTuong : ""}` : "Khoản chi")
+    + ` · ghi ngày ${e.date}`;
 
   // Lệnh dồn dư do app tự tạo: xoá xong lần mở sau app sẽ tạo lại đúng lệnh đó,
   // vì nó dựa trên phần dư thực tế chứ không phải trên dòng đã ghi.
@@ -1250,10 +1569,14 @@ function moHopSua(id) {
 
   // Chuyển lọ không có danh mục để chọn, chỉ sửa được số tiền và ghi chú.
   const oDanhMuc = $("edit-category");
-  const dsDanhMuc = laChuyen ? ["Chuyển lọ"] : (laThu ? CATEGORIES_THU : CATEGORIES_CHI);
+  // Vay nợ cũng khoá danh mục lại. Không khoá thì danh mục bị thay bằng mục
+  // chi đầu tiên và khoản cho vay biến thành khoản chi ngay lần lưu kế tiếp.
+  const dsDanhMuc = laChuyen ? ["Chuyển lọ"]
+    : laNo ? [e.type]
+    : (laThu ? CATEGORIES_THU : CATEGORIES_CHI);
   oDanhMuc.innerHTML = dsDanhMuc.map(c =>
     `<option value="${c}"${c === e.category ? " selected" : ""}>${c}</option>`).join("");
-  oDanhMuc.disabled = laChuyen;
+  oDanhMuc.disabled = laChuyen || laNo;
 
   const oNguoi = $("edit-payer");
   oNguoi.innerHTML = PAYERS.map(p =>
@@ -1312,7 +1635,9 @@ async function luuSuaKhoan() {
     // Sửa số tiền khoản thu thì phải chia lại vào các lọ, nếu không số dư lọ
     // sẽ vẫn theo số cũ. Chia theo tỉ lệ hiện tại.
     alloc: laThu ? Logic.phanBo(tien, tiLeLo) : (cu.alloc || null),
-    jar: Logic.laChuyenLo(cu) ? cu.jar : (laThu ? "" : Logic.doanLo(danhMuc)),
+    // Khoản vay nợ không thuộc lọ nào: nó không tiêu tiền của lọ nào cả.
+    jar: Logic.laChuyenLo(cu) ? cu.jar
+      : (laThu || Logic.laKhoanNo(cu)) ? "" : Logic.doanLo(danhMuc),
     // Khoản chuyển ví giữ nguyên cặp ví, không cho sửa lệch một đầu
     wallet: Logic.laChuyenVi(cu) ? cu.wallet : (($("edit-wallet") && $("edit-wallet").value) || "")
   };
@@ -1604,6 +1929,10 @@ async function napCaiDat() {
       caiDatVi = { ds: Logic.danhSachVi(s.vi), soDuDau: s.vi.soDuDau || {} };
       renderChipVi();
     }
+    if (Array.isArray(s.tietKiem)) {
+      dsTietKiem = s.tietKiem;
+      renderTietKiem();
+    }
   } catch (err) {
     // Không lấy được thì dùng tỉ lệ mặc định, app vẫn chạy.
   }
@@ -1635,6 +1964,7 @@ function initTabs() {
     { nut: "tab-btn-nhap",    khung: "tab-nhap" },
     { nut: "tab-btn-lo",      khung: "tab-lo" },
     { nut: "tab-btn-vi",      khung: "tab-vi" },
+    { nut: "tab-btn-no",      khung: "tab-no" },
     { nut: "tab-btn-thongke", khung: "tab-thongke" }
   ];
   if (!$(cacTab[0].nut)) return;
@@ -1647,6 +1977,7 @@ function initTabs() {
     });
     if (key === "tab-lo") renderJars();
     if (key === "tab-vi") renderVi();
+    if (key === "tab-no") { renderNo(); renderTietKiem(); }
     if (key === "tab-thongke") renderStats();
     window.scrollTo(0, 0);
   };
@@ -1759,6 +2090,7 @@ function init() {
   initTim();
   initHanMuc();
   initVi();
+  initNo();
 
   // Vừa gõ vừa chấm phân cách nghìn cho dễ đọc
   $("amount").addEventListener("input", e => {
