@@ -441,6 +441,22 @@ function formatDate(value) {
 //   Lần đầu Google sẽ hỏi cấp quyền gửi mail và tạo lịch chạy — bấm đồng ý.
 // TẮT: chạy hàm tatNhacDaoHan.
 
+// Địa chỉ nhận mail nhắc, lấy từ bảng CaiDat trong Sheet.
+//
+// VÌ SAO KHÔNG DÙNG Session.getEffectiveUser(): hàm đó đòi thêm quyền
+// userinfo.email, mà Google xin quyền theo từng dòng code chạy tới — thêm một
+// quyền là thêm một chỗ có thể kẹt, chỉ để tra một địa chỉ vốn không bao giờ
+// đổi. Để trong Sheet thì đọc bằng quyền sẵn có, và cũng không lọt vào repo
+// GitHub public như khi ghi thẳng vào code.
+function layEmailNhac_(caiDat) {
+  const e = String((caiDat && caiDat.emailNhac) || "").trim();
+  if (!e) {
+    throw new Error("Chưa đặt địa chỉ nhận mail nhắc. Vào Sheet CaiDat, " +
+                    "thêm dòng khoá emailNhac với giá trị là email của anh.");
+  }
+  return e;
+}
+
 const NGUONG_NHAC_NGAY = 7;      // nhắc khi còn dưới ngần này ngày
 const GIO_NHAC = 8;              // gửi mail lúc 8h sáng
 
@@ -511,10 +527,8 @@ function nhacDaoHan() {
            (Number(x.so.laiSuat) || 0) + "%/năm";
   }).join("\n\n");
 
-  // Gửi cho chủ sổ. getEffectiveUser là người đã cấp quyền chạy script,
-  // tức chính chủ — không phải người bấm nút trên web.
   MailApp.sendEmail(
-    Session.getEffectiveUser().getEmail(),
+    layEmailNhac_(caiDat),
     "[Sổ cá nhân] " + canNhac.length + " sổ tiết kiệm sắp/đã đáo hạn",
     "Nhắc đáo hạn ngày " + homNay + ":\n\n" + dong +
     "\n\nĐến hạn nhớ tất toán hoặc gia hạn, để quên là ngân hàng tự quay vòng " +
@@ -531,7 +545,7 @@ function nhacDaoHan() {
 // im lặng, không ai biết. Chạy hàm này một lần là Google xin nốt quyền gửi
 // mail, đồng thời anh nhận được mail thật nên biết chắc đường gửi thông.
 function guiThuMotEmail() {
-  const ai = Session.getEffectiveUser().getEmail();
+  const ai = layEmailNhac_(docCaiDat());
   MailApp.sendEmail(
     ai,
     "[Sổ cá nhân] Thử nhắc đáo hạn — không phải nhắc thật",
