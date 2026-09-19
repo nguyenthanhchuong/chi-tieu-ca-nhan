@@ -1088,3 +1088,60 @@ body {
   letter-spacing: 0.4px;
   margin: 16px 0 8px;
 }
+
+/* ===== Nội dung khoản ===== */
+.note-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 14px 0 5px;
+}
+.bat-buoc { color: var(--danger); }
+
+/* Chip gợi ý nội dung: bấm một cái thay cho gõ cả câu tiếng Việt có dấu.
+   Cho cuộn ngang thay vì xuống dòng, để không đẩy nút Lưu ra khỏi màn hình
+   khi có nhiều gợi ý. */
+.chips.goi-y {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  margin-top: 8px;
+  padding-bottom: 2px;
+}
+.chips.goi-y::-webkit-scrollbar { display: none; }
+.chips.goi-y:empty { display: none; }
+.goi-y-chip {
+  flex-shrink: 0;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Bảng gom theo nội dung trong hộp chi tiết */
+.nd-khoi {
+  background: var(--bg);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+}
+.nd-tieude {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 6px;
+}
+.nd-dong {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 0;
+  font-size: 13px;
+}
+.nd-ten { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nd-so { flex-shrink: 0; font-weight: 700; white-space: nowrap; }

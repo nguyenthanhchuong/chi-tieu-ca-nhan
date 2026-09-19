@@ -994,6 +994,101 @@ test("danh sách rỗng không làm vỡ", () => {
   bang(Logic.tomTatNo(null).soNguoi, 0);
 });
 
+
+// ===================================================================
+nhom("Nội dung khoản");
+
+const DS_ND = [
+  { date: "2026-09-01", amount: 120000, type: "Chi", category: "Ăn uống", note: "Hủ tíu Nam Vang" },
+  { date: "2026-09-03", amount: 90000,  type: "Chi", category: "Ăn uống", note: "hu tiu nam vang" },
+  { date: "2026-09-05", amount: 250000, type: "Chi", category: "Ăn uống", note: "Coop Trần Văn Quang" },
+  { date: "2026-09-06", amount: 300000, type: "Chi", category: "Ăn uống", note: "Coop  Trần  Văn Quang" },
+  { date: "2026-09-07", amount: 180000, type: "Chi", category: "Ăn uống", note: "Bánh xèo Nam Bộ" },
+  { date: "2026-09-08", amount: 500000, type: "Chi", category: "Hoá đơn", note: "Tiền điện nước" },
+  { date: "2026-09-09", amount: 400000, type: "Chi", category: "Ăn uống", note: "" }
+];
+
+test("chuẩn hoá khoá: bỏ dấu và gộp khoảng trắng", () => {
+  bang(Logic.khoaNoiDung("Coop  Trần  Văn Quang"), "coop tran van quang");
+  bang(Logic.khoaNoiDung("  Hủ tíu  "), "hu tiu");
+  bang(Logic.khoaNoiDung(""), "");
+});
+
+test("gợi ý chỉ lấy trong đúng danh mục đang chọn", () => {
+  const g = Logic.goiYNoiDung(DS_ND, "Hoá đơn", "");
+  bang(g, ["Tiền điện nước"]);
+});
+
+test("gợi ý xếp theo số lần dùng nhiều nhất", () => {
+  // Coop 2 lần, Hủ tíu 2 lần, Bánh xèo 1 lần -> Bánh xèo phải xuống cuối
+  const g = Logic.goiYNoiDung(DS_ND, "Ăn uống", "");
+  bang(g[g.length - 1], "Bánh xèo Nam Bộ");
+  bang(g.length, 3);
+});
+
+test("gõ lệch dấu vẫn gom làm một gợi ý, giữ cách viết mới nhất", () => {
+  // "Hủ tíu Nam Vang" (01/09) và "hu tiu nam vang" (03/09) là một;
+  // lần gõ gần nhất là 03/09 nên giữ bản đó.
+  const g = Logic.goiYNoiDung(DS_ND, "Ăn uống", "");
+  bang(g.filter(t => Logic.khoaNoiDung(t) === "hu tiu nam vang").length, 1);
+  bang(g.indexOf("hu tiu nam vang") >= 0, true);
+});
+
+test("lọc gợi ý KHÔNG cần gõ dấu", () => {
+  // Đây là lý do tồn tại của tính năng: gõ tiếng Việt có dấu trên điện thoại chậm
+  bang(Logic.goiYNoiDung(DS_ND, "Ăn uống", "hu"), ["hu tiu nam vang"]);
+  bang(Logic.goiYNoiDung(DS_ND, "Ăn uống", "banh xeo"), ["Bánh xèo Nam Bộ"]);
+});
+
+test("lọc theo ĐẦU âm tiết, không phải chuỗi con bất kỳ", () => {
+  // "am" nằm giữa "Nam" nhưng không mở đầu âm tiết nào -> không được khớp
+  bang(Logic.goiYNoiDung(DS_ND, "Ăn uống", "am").length, 0);
+  bang(Logic.goiYNoiDung(DS_ND, "Ăn uống", "nam").length, 2);
+});
+
+test("bỏ qua khoản chưa ghi nội dung khi gợi ý", () => {
+  bang(Logic.goiYNoiDung(DS_ND, "Ăn uống", "").indexOf(""), -1);
+});
+
+test("gom theo nội dung: cộng đúng và gộp bản gõ lệch dấu", () => {
+  const anUong = DS_ND.filter(e => e.category === "Ăn uống");
+  const g = Logic.gomTheoNoiDung(anUong);
+  const coop = g.find(x => Logic.khoaNoiDung(x.noiDung) === "coop tran van quang");
+  bang(coop.so, 2);
+  bang(coop.tien, 550000);          // 250k + 300k
+  const hu = g.find(x => Logic.khoaNoiDung(x.noiDung) === "hu tiu nam vang");
+  bang(hu.tien, 210000);            // 120k + 90k
+  // Tổng gom lại phải bằng đúng tổng đầu vào, không rơi rớt khoản nào
+  bang(g.reduce((s, x) => s + x.tien, 0),
+       anUong.reduce((s, e) => s + e.amount, 0));
+});
+
+test("khoản trống nội dung vẫn được gom, không biến mất", () => {
+  const g = Logic.gomTheoNoiDung(DS_ND.filter(e => e.category === "Ăn uống"));
+  const trong = g.find(x => x.noiDung === "(chưa ghi nội dung)");
+  bang(trong.tien, 400000);
+});
+
+test("gom xếp theo tiền giảm dần", () => {
+  const g = Logic.gomTheoNoiDung(DS_ND.filter(e => e.category === "Ăn uống"));
+  bang(g[0].tien >= g[1].tien, true);
+  bang(g[0].tien, 550000);
+});
+
+test("khoanCuaMuc trả về khoản GỐC, khớp với chiTietMuc", () => {
+  const goc = Logic.khoanCuaMuc(DS_ND, "2026-09-01", "2026-09-30", "danhMucChi", "Ăn uống");
+  const chiTiet = Logic.chiTietMuc(DS_ND, "2026-09-01", "2026-09-30", "danhMucChi", "Ăn uống");
+  bang(goc.length, chiTiet.length);
+  bang(goc.reduce((s, e) => s + e.amount, 0),
+       chiTiet.reduce((s, d) => s + d.tien, 0));
+});
+
+test("danh sách rỗng không làm vỡ", () => {
+  bang(Logic.goiYNoiDung(null, "Ăn uống", "").length, 0);
+  bang(Logic.gomTheoNoiDung(null).length, 0);
+  bang(Logic.khoanCuaMuc(null, "2026-09-01", "2026-09-30", "danhMucChi", "X").length, 0);
+});
+
 (function veKetQua() {
   const dat = ketQua.filter(k => k.dat).length;
   const hong = ketQua.length - dat;
