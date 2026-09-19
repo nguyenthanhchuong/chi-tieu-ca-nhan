@@ -21,6 +21,33 @@ Nếu đã cài app ra màn hình chính thì bấm **Tải lại bản mới** 
 
 ---
 
+## v10 — Nội dung khoản: bắt buộc nhập, có gợi ý, có tổng hợp
+*Apps Script: không đổi — dữ liệu vẫn nằm ở cột "Ghi chú" có sẵn*
+
+Ô **Ghi chú** đổi tên thành **Nội dung** và thành **bắt buộc**. Danh mục chỉ
+nói "Ăn uống", nội dung mới nói "Hủ tíu Nam Vang".
+
+- **Bắt buộc ở CẢ hai chỗ**: màn nhập và hộp sửa. Bắt buộc một nơi mà bỏ ngỏ
+  nơi kia thì sửa một cái là xoá sạch được, coi như không bắt buộc.
+- **Chip gợi ý ngay dưới ô nhập**, lấy đúng nội dung đã ghi trong danh mục
+  đang chọn, hay dùng nhất lên đầu. Bấm một cái thay cho gõ cả câu.
+- **Lọc gợi ý không cần gõ dấu**: gõ `hu` ra "Hủ tíu Nam Vang", gõ `coop` ra
+  "Coop Bình Minh". Đây là lý do chính của tính năng — gõ tiếng Việt có
+  dấu trên điện thoại chậm nên dễ bỏ cuộc rồi bấm bừa danh mục "Khác".
+- Khớp theo **đầu âm tiết**, không phải chuỗi con: gõ `am` không ra "Nam".
+- **Gom bản gõ lệch dấu làm một**: "Coop Bình Minh" và "coop tran van
+  quang" tính là một, giữ cách viết của lần gần nhất. Không có chỗ này thì
+  báo cáo tách đôi cùng một cái chợ.
+- **Bảng "Theo nội dung"** trong hộp chi tiết thống kê: bấm vào danh mục
+  Ăn uống là thấy hủ tíu bao nhiêu, Coop bao nhiêu, kèm số lần.
+- Tách `khoanCuaMuc` khỏi `chiTietMuc` để bảng tổng hợp và danh sách dùng
+  chung đúng một bộ lọc — hai nơi lọc hai kiểu là bug số liệu khó thấy nhất.
+- Số ca test: 163 → 175
+
+> Dữ liệu cũ **không cần làm gì**: khoản cũ đã có ghi chú thì gợi ý lấy luôn từ đó, gợi ý
+> 5 khoản bỏ trống vẫn đọc bình thường, chỉ khi nào anh mở ra
+> sửa thì mới phải điền nội dung.
+
 ## v9 — Vay nợ & Sổ tiết kiệm
 *Apps Script: **CÓ ĐỔI** — phải deploy lại (thêm cột "Đối tượng" + hàm nhắc đáo hạn)*
 

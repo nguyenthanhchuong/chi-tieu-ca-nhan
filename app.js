@@ -47,6 +47,31 @@ function danhMucHienTai() {
   return selectedKind === "Thu" ? CATEGORIES_THU : CATEGORIES_CHI;
 }
 
+// ===== Gợi ý nội dung =====
+// Anh đã gõ "Coop Bình Minh" 8 lần, "Netflix" 5 lần. Gõ lại tiếng Việt
+// có dấu trên điện thoại là lý do chính khiến người ta bỏ cuộc rồi bấm bừa.
+// Chip bấm một cái là xong, và vì chọn lại đúng chuỗi cũ nên báo cáo không bị
+// tách đôi vì gõ lệch một dấu.
+function veChipGoiY(oNhap, oChip, danhMuc) {
+  const box = $(oChip);
+  if (!box) return;
+  const ds = Logic.goiYNoiDung(tatCaKhoan(), danhMuc, $(oNhap).value, 8);
+  box.innerHTML = ds.map(t =>
+    `<button type="button" class="chip goi-y-chip">${t}</button>`).join("");
+  box.querySelectorAll(".goi-y-chip").forEach((b, i) => {
+    b.addEventListener("click", () => {
+      $(oNhap).value = ds[i];
+      veChipGoiY(oNhap, oChip, danhMuc);
+      $(oNhap).focus();
+    });
+  });
+}
+
+function capNhatGoiYNhap() {
+  veChipGoiY("note", "note-goiy", selectedCategory);
+}
+
+
 // ===== Tiện ích =====
 // Phần tính toán nằm trong logic.js để test riêng được (xem test.html).
 const $ = id => document.getElementById(id);
@@ -103,7 +128,7 @@ function initNgay() {
 
 // ===== Gọi API =====
 // Tăng mỗi lần sửa app, hiển thị ở màn hình PIN để biết máy đang chạy bản nào.
-const APP_VERSION = "9";
+const APP_VERSION = "10";
 
 // ===== Nhật ký dò lỗi =====
 // Ghi vào localStorage nên còn nguyên kể cả khi trang tự nạp lại — đây là
@@ -324,6 +349,10 @@ function renderChips() {
     });
     payBox.appendChild(btn);
   });
+
+  // Đổi danh mục thì gợi ý phải đổi theo: nội dung của Ăn uống không có
+  // nghĩa gì ở Điện thoại/Internet.
+  capNhatGoiYNhap();
 }
 
 function tatCaKhoan() {
@@ -423,6 +452,8 @@ function render() {
   renderJars();
   renderVi();
   renderNo();
+  // Nạp xong dữ liệu mới có cái để gợi ý; lúc khởi động sổ còn rỗng.
+  capNhatGoiYNhap();
 }
 
 // ===== Ví / nguồn tiền =====
@@ -1595,6 +1626,7 @@ function moHopSua(id) {
   }
 
   $("edit-note").value = e.note || "";
+  veChipGoiY("edit-note", "edit-note-goiy", oDanhMuc.value);
   $("edit-error").hidden = true;
   datLaiNutXoa();
   $("edit-sheet").hidden = false;
@@ -1619,6 +1651,16 @@ async function luuSuaKhoan() {
     loi.hidden = false;
     return;
   }
+
+  // Chặn cả ở đây, nếu không thì sửa một khoản là xoá sạch nội dung được —
+  // bắt buộc ở màn nhập mà bỏ ngỏ ở màn sửa thì coi như không bắt buộc.
+  const noiDungMoi = $("edit-note").value.trim();
+  if (!noiDungMoi) {
+    loi.textContent = "Nội dung không được để trống.";
+    loi.hidden = false;
+    $("edit-note").focus();
+    return;
+  }
   loi.hidden = true;
 
   const cu = khoanDangSua;
@@ -1631,7 +1673,7 @@ async function luuSuaKhoan() {
     date: $("edit-date").value || cu.date,
     category: danhMuc,
     payer: $("edit-payer").value,
-    note: $("edit-note").value.trim(),
+    note: noiDungMoi,
     // Sửa số tiền khoản thu thì phải chia lại vào các lọ, nếu không số dư lọ
     // sẽ vẫn theo số cũ. Chia theo tỉ lệ hiện tại.
     alloc: laThu ? Logic.phanBo(tien, tiLeLo) : (cu.alloc || null),
@@ -1699,12 +1741,33 @@ function initEdit() {
     const n = parseAmount(e.target.value);
     e.target.value = n ? formatMoney(n) : "";
   });
+  $("edit-note").addEventListener("input", () => {
+    veChipGoiY("edit-note", "edit-note-goiy", $("edit-category").value);
+  });
+  $("edit-category").addEventListener("change", () => {
+    veChipGoiY("edit-note", "edit-note-goiy", $("edit-category").value);
+  });
 }
 
 // Hộp chi tiết dùng chung cho cả màn hình lọ lẫn bảng thống kê.
-function moHopChiTiet(tieuDe, tomTat, ds, khiRong) {
+function moHopChiTiet(tieuDe, tomTat, ds, khiRong, khoanGoc) {
   $("jar-detail-name").textContent = tieuDe;
   $("jar-detail-sum").textContent = tomTat;
+
+  // Tổng hợp theo nội dung: trong "Ăn uống" thì hủ tíu hết bao nhiêu.
+  // Chỉ hiện khi có từ 2 nội dung trở lên — một dòng thì bảng thành thừa.
+  const oND = $("jar-detail-noidung");
+  if (oND) {
+    const gom = khoanGoc ? Logic.gomTheoNoiDung(khoanGoc) : [];
+    oND.innerHTML = gom.length > 1
+      ? `<div class="nd-khoi"><div class="nd-tieude">Theo nội dung</div>` +
+        gom.map(g => `
+          <div class="nd-dong">
+            <span class="nd-ten">${g.noiDung}</span>
+            <span class="nd-so">${g.so > 1 ? `×${g.so} · ` : ""}${formatMoney(g.tien)} đ</span>
+          </div>`).join("") + `</div>`
+      : "";
+  }
   $("jar-detail-list").innerHTML = ds.length
     ? ds.map(d => `
         <div class="mv">
@@ -1742,6 +1805,7 @@ function moChiTietMuc(loai, giaTri) {
   const { dau, cuoi } = Logic.khoangKy(statMode, statOffset);
   const tuNgay = Logic.ngayKey(dau), denNgay = Logic.ngayKey(cuoi);
   const ds = Logic.chiTietMuc(tatCaKhoan(), tuNgay, denNgay, loai, giaTri);
+  const goc = Logic.khoanCuaMuc(tatCaKhoan(), tuNgay, denNgay, loai, giaTri);
   const tong = ds.reduce((s, d) => s + d.tien, 0);
 
   const nhan = {
@@ -1754,7 +1818,8 @@ function moChiTietMuc(loai, giaTri) {
     `${nhan} ${giaTri}`,
     `${ds.length} khoản · tổng ${formatMoney(tong)} đ · ${Logic.nhanKy(statMode, dau, cuoi)}`,
     ds,
-    "Không có khoản nào trong kỳ này."
+    "Không có khoản nào trong kỳ này.",
+    goc
   );
 }
 
@@ -2007,6 +2072,16 @@ async function saveEntry() {
     error.hidden = false;
     return;
   }
+
+  // Nội dung bắt buộc. Danh mục chỉ nói "Ăn uống", nội dung mới nói "Hủ tíu
+  // Nam Vang" — thiếu nó thì vài tháng sau nhìn lại không nhớ tiêu vào đâu.
+  const noiDung = $("note").value.trim();
+  if (!noiDung) {
+    error.textContent = "Anh ghi nội dung nhé, ví dụ “Hủ tíu Nam Vang”.";
+    error.hidden = false;
+    $("note").focus();
+    return;
+  }
   error.hidden = true;
 
   const now = new Date();
@@ -2016,7 +2091,7 @@ async function saveEntry() {
     date: ($("entry-date") && $("entry-date").value) || ngayHomNay(),
     amount,
     category: selectedCategory,
-    note: $("note").value.trim(),
+    note: noiDung,
     payer: selectedPayer,
     type: selectedKind,
     // Khoản chi trừ vào lọ nào (suy từ danh mục).
@@ -2097,6 +2172,9 @@ function init() {
     const n = parseAmount(e.target.value);
     e.target.value = n ? formatMoney(n) : "";
   });
+
+  // Vừa gõ vừa lọc gợi ý, không dấu cũng ra
+  $("note").addEventListener("input", capNhatGoiYNhap);
 
   $("btn-save").addEventListener("click", saveEntry);
 

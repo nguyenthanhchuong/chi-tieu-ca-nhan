@@ -271,21 +271,22 @@ const Logic = (function () {
   // loai: "nguonThu" | "danhMucChi" | "nguoiChi"
   // Cộng lại phải bằng đúng con số trên thanh, nếu không người dùng bấm vào
   // xem sẽ thấy số khác với số vừa nhìn thấy.
-  function chiTietMuc(khoan, tuNgay, denNgay, loai, giaTri) {
+  // Các khoản GỐC đứng sau một dòng thống kê. Tách riêng khỏi chiTietMuc để
+  // chỗ khác (vd gom theo nội dung) dùng lại được đúng bộ lọc đó — hai nơi
+  // lọc theo hai cách là kiểu bug số liệu khó thấy nhất.
+  function khoanCuaMuc(khoan, tuNgay, denNgay, loai, giaTri) {
     const trongKy = (khoan || []).filter(e => trongKhoang(e && e.date, tuNgay, denNgay));
     const nhan = e => (e && e.category) || "Khác";
 
-    let ds;
-    if (loai === "nguonThu") {
-      ds = trongKy.filter(e => laKhoanThu(e) && nhan(e) === giaTri);
-    } else if (loai === "danhMucChi") {
-      ds = trongKy.filter(e => laKhoanChi(e) && nhan(e) === giaTri);
-    } else if (loai === "nguoiChi") {
-      ds = trongKy.filter(e => laKhoanChi(e) && e && e.payer === giaTri);
-    } else {
-      return [];
-    }
+    if (loai === "nguonThu")   return trongKy.filter(e => laKhoanThu(e) && nhan(e) === giaTri);
+    if (loai === "danhMucChi") return trongKy.filter(e => laKhoanChi(e) && nhan(e) === giaTri);
+    if (loai === "nguoiChi")   return trongKy.filter(e => laKhoanChi(e) && e && e.payer === giaTri);
+    return [];
+  }
 
+  function chiTietMuc(khoan, tuNgay, denNgay, loai, giaTri) {
+    const nhan = e => (e && e.category) || "Khác";
+    const ds = khoanCuaMuc(khoan, tuNgay, denNgay, loai, giaTri);
     const vao = loai === "nguonThu";
     return ds
       .map(e => ({
@@ -661,6 +662,63 @@ const Logic = (function () {
   }
 
 
+  // ===== Nội dung khoản =====
+  // "Nội dung" là thứ anh thật sự tiêu: danh mục là Ăn uống, nội dung là
+  // "Hủ tíu Nam Vang". Đây vốn là cột Ghi chú, nay thành bắt buộc.
+
+  // Khoá gom nhóm: bỏ dấu, gộp khoảng trắng. Nhờ vậy "Coop Bình Minh"
+  // và "coop binh minh" được tính là một — nếu không, mỗi lần gõ lệch
+  // một dấu là báo cáo tách thành hai dòng riêng.
+  function khoaNoiDung(s) {
+    return boDau(s).replace(/\s+/g, " ").trim();
+  }
+
+  // Gợi ý nội dung đã từng ghi trong ĐÚNG danh mục đang chọn.
+  // Xếp theo số lần dùng, rồi tới lần dùng gần nhất.
+  // chu: phần anh đang gõ dở; lọc theo đầu âm tiết và KHÔNG cần dấu, vì mục
+  // đích của gợi ý chính là để khỏi phải gõ tiếng Việt có dấu trên điện thoại.
+  function goiYNoiDung(khoan, danhMuc, chu, gioiHan) {
+    const dem = {};
+    (khoan || []).forEach(e => {
+      if (!e || String(e.category || "") !== String(danhMuc || "")) return;
+      const tho = String(e.note || "").trim();
+      const k = khoaNoiDung(tho);
+      if (!k) return;
+      if (!dem[k]) dem[k] = { text: tho, so: 0, moiNhat: "" };
+      dem[k].so++;
+      // Giữ cách viết của lần gần nhất: đó thường là cách anh muốn dùng tiếp.
+      const ngay = String(e.date || "");
+      if (ngay >= dem[k].moiNhat) { dem[k].moiNhat = ngay; dem[k].text = tho; }
+    });
+
+    const am = s => boDau(s).split(/[^a-z0-9]+/).filter(Boolean);
+    const tuKhoa = am(chu || "");
+    const khop = o => {
+      if (!tuKhoa.length) return true;
+      const kho = am(o.text);
+      return tuKhoa.every(t => kho.some(w => w.startsWith(t)));
+    };
+
+    return Object.keys(dem).map(k => dem[k])
+      .filter(khop)
+      .sort((a, b) => (b.so - a.so) || b.moiNhat.localeCompare(a.moiNhat))
+      .slice(0, gioiHan || 40)
+      .map(o => o.text);
+  }
+
+  // Gom tiền theo nội dung, để trả lời "trong Ăn uống thì hủ tíu hết bao nhiêu".
+  function gomTheoNoiDung(danhSach) {
+    const m = {};
+    (danhSach || []).forEach(e => {
+      const tho = String((e && e.note) || "").trim();
+      const k = khoaNoiDung(tho) || "(chưa ghi nội dung)";
+      if (!m[k]) m[k] = { noiDung: tho || "(chưa ghi nội dung)", so: 0, tien: 0 };
+      m[k].so++;
+      m[k].tien += Number(e && e.amount) || 0;
+    });
+    return Object.keys(m).map(k => m[k]).sort((a, b) => b.tien - a.tien);
+  }
+
   // ===== Hạn mức chi tiêu theo danh mục =====
   // Khác với sáu lọ: lọ là CHIA TIỀN VÀO khi có thu, hạn mức là CHẶN TIỀN RA
   // theo từng danh mục trong một tháng. Hai thứ bổ sung nhau, không trùng.
@@ -846,10 +904,11 @@ const Logic = (function () {
     NGUONG_SAP_VUOT, daChiTheoMuc, daChiTheoLo, loCuaKhoan,
     chuanHoaHanMuc, trangThaiHanMuc, tomTatHanMuc,
     boDau, locKhoan, tongKetLoc,
+    khoaNoiDung, goiYNoiDung, gomTheoNoiDung,
     khoangKy, nhanKy, trongKhoang, tongHopKy, friendlyError,
     // Bốn chiếc lọ
     LOS, LO_MAC_DINH_NHAN_DU, timLo, tiLeMacDinh, doanLo,
-    phanBo, phanBoCuaKhoanThu, soDuCacLo, chiTietLo, chiTietMuc, duChuaChuyen,
+    phanBo, phanBoCuaKhoanThu, soDuCacLo, chiTietLo, chiTietMuc, khoanCuaMuc, duChuaChuyen,
     maChuyenTuDong, lenhChuyenTuDong, ngayCuoiThang, kiemTraChuyen
   };
 })();
