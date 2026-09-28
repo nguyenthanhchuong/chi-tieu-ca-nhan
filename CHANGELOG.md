@@ -44,9 +44,9 @@ nói "Ăn uống", nội dung mới nói "Hủ tíu Nam Vang".
   chung đúng một bộ lọc — hai nơi lọc hai kiểu là bug số liệu khó thấy nhất.
 - Số ca test: 163 → 175
 
-> Dữ liệu cũ **không cần làm gì**: khoản cũ đã có ghi chú thì gợi ý lấy luôn từ đó, gợi ý
-> 5 khoản bỏ trống vẫn đọc bình thường, chỉ khi nào anh mở ra
-> sửa thì mới phải điền nội dung.
+> Dữ liệu cũ **không cần làm gì**: khoản nào đã có ghi chú thì gợi ý lấy luôn
+> từ đó. Khoản bỏ trống vẫn đọc bình thường, chỉ khi nào anh mở ra sửa thì mới
+> phải điền nội dung.
 
 ## v9 — Vay nợ & Sổ tiết kiệm
 *Apps Script: **CÓ ĐỔI** — phải deploy lại (thêm cột "Đối tượng" + hàm nhắc đáo hạn)*
