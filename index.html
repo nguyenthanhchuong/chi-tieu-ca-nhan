@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Chi Tiêu Cá Nhân">
-<link rel="stylesheet" href="style.css?v=10">
+<link rel="stylesheet" href="style.css?v=11">
 </head>
 <body>
 
@@ -86,6 +86,19 @@
       <input type="text" id="note" class="note-input"
              autocomplete="off" placeholder="VD: Hủ tíu Nam Vang">
       <div class="chips goi-y" id="note-goiy"></div>
+
+      <!-- Ảnh hoá đơn. Không đặt capture="environment": để trống thì điện
+           thoại cho chọn giữa chụp mới và lấy ảnh có sẵn trong máy, mà hoá
+           đơn thì nhiều khi đã chụp từ trước rồi. -->
+      <div class="anh-khoi">
+        <input type="file" id="anh-file" accept="image/*" hidden>
+        <button type="button" class="btn-anh" id="btn-anh">📷 Ảnh hoá đơn</button>
+        <div class="anh-xt" id="anh-xt" hidden>
+          <img id="anh-xt-img" alt="Ảnh hoá đơn vừa chọn">
+          <span class="anh-co" id="anh-co"></span>
+          <button type="button" class="btn-xoa-nho" id="anh-bo">Bỏ ảnh</button>
+        </div>
+      </div>
 
       <div class="payer-row">
         <span class="payer-label" id="payer-label">Người chi</span>
@@ -419,6 +432,18 @@
       <input type="text" class="note-input" id="edit-note" placeholder="VD: Hủ tíu Nam Vang">
       <div class="chips goi-y" id="edit-note-goiy"></div>
 
+      <div class="edit-anh" id="edit-anh" hidden>
+        <div class="edit-anh-xem" id="edit-anh-xem">
+          <img id="edit-anh-img" alt="Ảnh hoá đơn" hidden>
+          <span class="edit-anh-nhan" id="edit-anh-nhan"></span>
+        </div>
+        <div class="edit-anh-nut">
+          <button type="button" class="btn-anh" id="edit-anh-them">📷 Thêm ảnh</button>
+          <button type="button" class="btn-xoa-nho" id="edit-anh-bo" hidden>Gỡ ảnh</button>
+        </div>
+        <input type="file" id="edit-anh-file" accept="image/*" hidden>
+      </div>
+
       <p class="entry-error" id="edit-error" hidden></p>
 
       <div class="sheet-actions">
@@ -480,10 +505,18 @@
     </section>
   </div>
 
+  <!-- Xem ảnh hoá đơn phóng to. Nằm ngoài cùng, phủ kín màn hình, vì hoá đơn
+       chữ nhỏ mà xem trong một ô vuông bé thì không đọc nổi. -->
+  <div class="anh-xem" id="anh-xem" hidden>
+    <button type="button" class="anh-dong" id="anh-dong" aria-label="Đóng">✕</button>
+    <img id="anh-xem-img" alt="Ảnh hoá đơn" hidden>
+    <p class="anh-trangthai" id="anh-trangthai"></p>
+  </div>
+
   <div class="toast" id="toast" hidden></div>
 </div>
 
-<script src="logic.js?v=10"></script>
-<script src="app.js?v=10"></script>
+<script src="logic.js?v=11"></script>
+<script src="app.js?v=11"></script>
 </body>
 </html>

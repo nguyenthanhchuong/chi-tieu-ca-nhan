@@ -31,7 +31,12 @@ const store = {
   get payer()    { return localStorage.getItem("ctcn_payer") || PAYERS[0]; },
   set payer(v)   { localStorage.setItem("ctcn_payer", v); },
   get queue()    { try { return JSON.parse(localStorage.getItem("ctcn_queue") || "[]"); } catch { return []; } },
-  set queue(v)   { localStorage.setItem("ctcn_queue", JSON.stringify(v)); }
+  set queue(v)   { localStorage.setItem("ctcn_queue", JSON.stringify(v)); },
+  // CHỈ danh sách mã khoản đang có ảnh chờ gửi — bản thân ảnh nằm ở
+  // IndexedDB. Để ở localStorage vì lúc vẽ danh sách cần biết NGAY khoản nào
+  // có ảnh, mà IndexedDB thì phải chờ, không kịp cho một vòng vẽ.
+  get anhCho()   { try { return JSON.parse(localStorage.getItem("ctcn_anh_cho") || "[]"); } catch { return []; } },
+  set anhCho(v)  { localStorage.setItem("ctcn_anh_cho", JSON.stringify(v)); }
 };
 
 let selectedKind = "Chi";                    // Chi hoặc Thu
@@ -45,6 +50,331 @@ let statOffset = 0;       // 0 = kỳ hiện tại, -1 = kỳ trước
 
 function danhMucHienTai() {
   return selectedKind === "Thu" ? CATEGORIES_THU : CATEGORIES_CHI;
+}
+
+// ===== Kho ảnh trong máy (IndexedDB) =====
+// Hai ngăn:
+//   cho   — ảnh chụp lúc chưa gửi được, chờ có mạng. MẤT NGĂN NÀY LÀ MẤT ẢNH.
+//   cache — ảnh đã tải về từ Drive, giữ lại để xem nhanh và xem được khi mất
+//           mạng. Mất ngăn này chỉ phải tải lại, không mất gì.
+//
+// VÌ SAO KHÔNG DÙNG localStorage NHƯ HÀNG CHỜ KHOẢN: chỗ đó chỉ có khoảng 5MB
+// cho CẢ sổ, mà hàng chờ khoản cũng nằm đó. Vài tấm ảnh là đầy, và khi đầy thì
+// localStorage ném lỗi — khoản ghi lúc mất mạng sẽ mất theo ảnh. IndexedDB
+// rộng hàng trăm MB và nằm riêng.
+const DB_TEN = "ctcn_anh";
+const DB_BAN = 1;
+const KHO_CHO = "cho";
+const KHO_CACHE = "cache";
+
+let _db = null;
+function moDb() {
+  if (_db) return Promise.resolve(_db);
+  return new Promise((xong, hong) => {
+    if (!window.indexedDB) return hong(new Error("Máy không có kho ảnh"));
+    const r = indexedDB.open(DB_TEN, DB_BAN);
+    r.onupgradeneeded = () => {
+      const db = r.result;
+      if (!db.objectStoreNames.contains(KHO_CHO)) db.createObjectStore(KHO_CHO);
+      if (!db.objectStoreNames.contains(KHO_CACHE)) db.createObjectStore(KHO_CACHE);
+    };
+    r.onsuccess = () => { _db = r.result; xong(_db); };
+    r.onerror = () => hong(r.error || new Error("Không mở được kho ảnh"));
+  });
+}
+
+function dbViec(kho, che, viec) {
+  return moDb().then(db => new Promise((xong, hong) => {
+    const t = db.transaction(kho, che);
+    const req = viec(t.objectStore(kho));
+    t.onerror = () => hong(t.error);
+    t.onabort = () => hong(t.error || new Error("Kho ảnh từ chối ghi"));
+    // Đợi oncomplete chứ không phải req.onsuccess: ghi xong trong bộ nhớ chưa
+    // chắc đã nằm trên đĩa, mà ảnh chờ gửi thì phải chắc.
+    t.oncomplete = () => xong(req ? req.result : undefined);
+  }));
+}
+
+const dbGhi  = (kho, khoa, gt) => dbViec(kho, "readwrite", s => s.put(gt, khoa));
+const dbDoc  = (kho, khoa)     => dbViec(kho, "readonly",  s => s.get(khoa));
+const dbXoa  = (kho, khoa)     => dbViec(kho, "readwrite", s => s.delete(khoa));
+const dbKhoa = (kho)           => dbViec(kho, "readonly",  s => s.getAllKeys());
+
+// Dùng cho ngăn cache và các bước dọn dẹp: hỏng thì bỏ qua, đừng làm hỏng
+// việc chính. Ngăn "cho" thì KHÔNG dùng hàm này — ở đó lỗi phải báo cho anh.
+const dbThu = p => p.catch(() => null);
+
+// ===== Ảnh hoá đơn =====
+const ANH_CANH_TOI_DA = 1400;
+const ANH_CHAT_LUONG = 0.72;
+const CACHE_ANH_TOI_DA = 50;     // giữ 50 ảnh xem gần nhất, ~12MB
+
+function anhUrl(a) {
+  return `data:${(a && a.mime) || "image/jpeg"};base64,${(a && a.data) || ""}`;
+}
+
+// Base64 dài gấp 4/3 số byte thật, nên chia ngược lại ra cỡ file xấp xỉ.
+function coAnhKb(data) {
+  return Math.round(((String(data || "").length * 3) / 4) / 1024);
+}
+
+// Thu nhỏ và nén ảnh NGAY TRÊN MÁY trước khi gửi.
+// Trả về { data (base64 trần, không có tiền tố), mime }.
+function nenAnh(file) {
+  return new Promise((xong, hong) => {
+    const fr = new FileReader();
+    fr.onerror = () => hong(new Error("Không đọc được tệp này"));
+    fr.onload = () => {
+      const img = new Image();
+      // iPhone chụp định dạng HEIC. Khi chọn qua ô tệp thì iOS thường tự đổi
+      // sang JPEG, nhưng không phải lúc nào cũng vậy — rơi vào nhánh này thì
+      // phải nói rõ, đừng để anh bấm lại ba lần mà không hiểu vì sao.
+      img.onerror = () => hong(new Error("Không mở được ảnh này. Thử chụp lại hoặc chọn ảnh khác."));
+      img.onload = () => {
+        const { w, h } = Logic.kichThuocMoi(img.width, img.height, ANH_CANH_TOI_DA);
+        if (!w || !h) return hong(new Error("Ảnh không hợp lệ"));
+        const c = document.createElement("canvas");
+        c.width = w;
+        c.height = h;
+        c.getContext("2d").drawImage(img, 0, 0, w, h);
+        // Luôn ra JPEG: ảnh chụp màn hình dạng PNG nặng gấp mấy lần JPEG cùng
+        // độ nét, mà hoá đơn thì không cần nền trong suốt.
+        const url = c.toDataURL("image/jpeg", ANH_CHAT_LUONG);
+        xong({ data: url.slice(url.indexOf(",") + 1), mime: "image/jpeg" });
+      };
+      img.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
+}
+
+// Cất ảnh vào máy rồi ghi tên khoản vào danh sách chờ.
+// Thứ tự quan trọng: ghi bytes TRƯỚC, ghi tên SAU. Ngược lại thì có lúc danh
+// sách chờ trỏ tới một mã không có ảnh nào đằng sau.
+async function catAnhChoCho(id, anh) {
+  try {
+    await dbGhi(KHO_CHO, id, { data: anh.data, mime: anh.mime, luc: Date.now() });
+    const ds = store.anhCho;
+    if (!ds.includes(id)) store.anhCho = [...ds, id];
+    return true;
+  } catch (err) {
+    showToast("Máy không cho lưu ảnh tạm nên ảnh chưa được giữ lại. Khoản vẫn lưu bình thường.");
+    return false;
+  }
+}
+
+// Gửi ảnh lên Drive. Không được thì cất vào hàng chờ.
+async function ganAnhVaoKhoan(id, anh) {
+  try {
+    const kq = await callApi("uploadAnh", { id, data: anh.data, mime: anh.mime }, { retries: 1 });
+    const i = entries.findIndex(x => x.id === id);
+    if (i >= 0) entries[i] = { ...entries[i], anh: kq.anhId };
+    // Đang cầm sẵn bytes thì cất luôn vào cache, khỏi phải tải lại khi xem.
+    await dbThu(dbGhi(KHO_CACHE, kq.anhId, { data: anh.data, mime: anh.mime, luc: Date.now() }));
+    await dbThu(dbXoa(KHO_CHO, id));
+    store.anhCho = store.anhCho.filter(x => x !== id);
+    return true;
+  } catch (err) {
+    return catAnhChoCho(id, anh);
+  }
+}
+
+// Gửi nốt những ảnh còn kẹt. Gọi SAU flushQueue, vì ảnh chỉ gắn được khi
+// khoản của nó đã nằm trên Sheet.
+async function flushAnh() {
+  const cho = store.anhCho;
+  if (!cho.length) return 0;
+
+  const con = [];
+  let daGui = 0;
+
+  for (const id of cho) {
+    const goi = await dbThu(dbDoc(KHO_CHO, id));
+    // Không còn bytes thì giữ tên lại cũng vô ích, chỉ làm dấu chờ hiện mãi.
+    if (!goi || !goi.data) continue;
+
+    try {
+      const kq = await callApi("uploadAnh", { id, data: goi.data, mime: goi.mime }, { retries: 1 });
+      const i = entries.findIndex(x => x.id === id);
+      if (i >= 0) entries[i] = { ...entries[i], anh: kq.anhId };
+      await dbThu(dbGhi(KHO_CACHE, kq.anhId, { data: goi.data, mime: goi.mime, luc: Date.now() }));
+      await dbThu(dbXoa(KHO_CHO, id));
+      daGui++;
+    } catch (err) {
+      // Khoản chưa lên Sheet thì giữ ảnh lại, vòng sau gửi tiếp. Mọi lỗi khác
+      // cũng giữ: thà hiện dấu chờ còn hơn lặng lẽ vứt ảnh của anh.
+      con.push(id);
+    }
+  }
+
+  store.anhCho = con;
+  if (daGui) showToast(`Đã gửi ${daGui} ảnh hoá đơn còn kẹt`);
+  return daGui;
+}
+
+// Lấy ảnh của một khoản để xem: ưu tiên những gì đang có sẵn trong máy.
+async function layAnhDeXem(e) {
+  if (store.anhCho.includes(e.id)) {
+    const goi = await dbThu(dbDoc(KHO_CHO, e.id));
+    if (goi && goi.data) return goi;
+  }
+  if (!e.anh) return null;
+
+  const sanCo = await dbThu(dbDoc(KHO_CACHE, e.anh));
+  if (sanCo && sanCo.data) return sanCo;
+
+  const kq = await callApi("getAnh", { anhId: e.anh }, { retries: 1 });
+  const goi = { data: kq.data, mime: kq.mime || "image/jpeg", luc: Date.now() };
+  await dbThu(dbGhi(KHO_CACHE, e.anh, goi));
+  donCacheAnh();
+  return goi;
+}
+
+// Giữ cache không phình mãi. Chạy ngầm, hỏng cũng không sao.
+async function donCacheAnh() {
+  try {
+    const khoa = await dbKhoa(KHO_CACHE);
+    if (khoa.length <= CACHE_ANH_TOI_DA) return;
+    const ds = [];
+    for (const k of khoa) {
+      const v = await dbDoc(KHO_CACHE, k);
+      ds.push({ k, luc: (v && v.luc) || 0 });
+    }
+    ds.sort((a, b) => b.luc - a.luc);
+    for (const x of ds.slice(CACHE_ANH_TOI_DA)) await dbXoa(KHO_CACHE, x.k);
+  } catch (err) { /* dọn dẹp hỏng thì thôi */ }
+}
+
+// Dọn sạch mọi dấu vết ảnh của một khoản trong máy. Gọi khi xoá khoản hoặc
+// gỡ ảnh — không gọi thì ảnh cũ vẫn hiện lại từ cache dù trên Drive đã xoá.
+async function donAnhTrongMay(id, anhId) {
+  await dbThu(dbXoa(KHO_CHO, id));
+  if (anhId) await dbThu(dbXoa(KHO_CACHE, anhId));
+  store.anhCho = store.anhCho.filter(x => x !== id);
+}
+
+// ===== Hộp xem ảnh =====
+let anhDangXem = null;
+
+async function moHopXemAnh(e) {
+  anhDangXem = e;
+  const hop = $("anh-xem");
+  const img = $("anh-xem-img");
+  const tt = $("anh-trangthai");
+  if (!hop) return;
+
+  img.hidden = true;
+  img.removeAttribute("src");
+  tt.textContent = "Đang mở ảnh…";
+  tt.hidden = false;
+  hop.hidden = false;
+
+  try {
+    const goi = await layAnhDeXem(e);
+    if (anhDangXem !== e) return;        // anh đã đóng hoặc mở ảnh khác
+    if (!goi) throw new Error("Khoản này chưa có ảnh");
+    img.src = anhUrl(goi);
+    img.hidden = false;
+    tt.hidden = true;
+  } catch (err) {
+    if (anhDangXem !== e) return;
+    tt.textContent = navigator.onLine
+      ? friendlyError(err)
+      : "Đang mất mạng và ảnh này chưa có sẵn trong máy. Có mạng rồi mở lại nhé.";
+  }
+}
+
+function dongHopXemAnh() {
+  anhDangXem = null;
+  const hop = $("anh-xem");
+  if (!hop) return;
+  hop.hidden = true;
+  // Bỏ src để trình duyệt nhả bộ nhớ, ảnh nền mỗi tấm vài trăm KB.
+  $("anh-xem-img").removeAttribute("src");
+}
+
+// ===== Ảnh ở màn nhập =====
+let anhDangChon = null;
+
+function veXemTruocAnh() {
+  const khoi = $("anh-xt");
+  if (!khoi) return;
+  if (!anhDangChon) {
+    khoi.hidden = true;
+    $("anh-xt-img").removeAttribute("src");
+    $("btn-anh").textContent = "📷 Ảnh hoá đơn";
+    return;
+  }
+  $("anh-xt-img").src = anhUrl(anhDangChon);
+  $("anh-co").textContent = `${coAnhKb(anhDangChon.data)} KB`;
+  khoi.hidden = false;
+  $("btn-anh").textContent = "📷 Đổi ảnh";
+}
+
+async function chonAnh(file, datVao) {
+  if (!file) return;
+  try {
+    const anh = await nenAnh(file);
+    datVao(anh);
+  } catch (err) {
+    showToast(err.message || "Không dùng được ảnh này");
+  }
+}
+
+function initAnh() {
+  if (!$("anh-file")) return;
+
+  $("btn-anh").addEventListener("click", () => $("anh-file").click());
+  $("anh-file").addEventListener("change", async ev => {
+    const f = ev.target.files && ev.target.files[0];
+    // Xoá value ngay để chọn LẠI ĐÚNG tệp vừa rồi vẫn kích hoạt change.
+    ev.target.value = "";
+    await chonAnh(f, a => { anhDangChon = a; veXemTruocAnh(); });
+  });
+  $("anh-bo").addEventListener("click", () => { anhDangChon = null; veXemTruocAnh(); });
+  $("anh-xt-img").addEventListener("click", () => {
+    if (anhDangChon) moHopAnhTam(anhDangChon);
+  });
+
+  $("anh-dong").addEventListener("click", dongHopXemAnh);
+  $("anh-xem").addEventListener("click", ev => {
+    if (ev.target === $("anh-xem")) dongHopXemAnh();
+  });
+
+  // Ảnh ở hộp sửa
+  if ($("edit-anh-file")) {
+    $("edit-anh-them").addEventListener("click", () => $("edit-anh-file").click());
+    $("edit-anh-file").addEventListener("change", async ev => {
+      const f = ev.target.files && ev.target.files[0];
+      ev.target.value = "";
+      await chonAnh(f, a => { anhSuaMoi = a; anhSuaXoa = false; veAnhHopSua(); });
+    });
+    $("edit-anh-bo").addEventListener("click", () => {
+      // Chọn ảnh mới rồi lại bỏ thì chỉ bỏ ảnh mới, ảnh cũ trên Drive vẫn còn.
+      if (anhSuaMoi) anhSuaMoi = null;
+      else anhSuaXoa = true;
+      veAnhHopSua();
+    });
+    // Bắt cả khung chứ không riêng ảnh: khi khoản có ảnh trên Drive thì khung
+    // chỉ hiện dòng chữ, chưa có ảnh nào để mà bấm vào.
+    $("edit-anh-xem").addEventListener("click", () => {
+      if (anhSuaMoi) moHopAnhTam(anhSuaMoi);
+      else if (!anhSuaXoa && khoanDangSua && Logic.coAnh(khoanDangSua, store.anhCho)) {
+        moHopXemAnh(khoanDangSua);
+      }
+    });
+  }
+}
+
+// Xem ảnh đang cầm trong tay, chưa gửi đi đâu.
+function moHopAnhTam(anh) {
+  anhDangXem = null;
+  const hop = $("anh-xem");
+  if (!hop) return;
+  $("anh-xem-img").src = anhUrl(anh);
+  $("anh-xem-img").hidden = false;
+  $("anh-trangthai").hidden = true;
+  hop.hidden = false;
 }
 
 // ===== Gợi ý nội dung =====
@@ -128,7 +458,7 @@ function initNgay() {
 
 // ===== Gọi API =====
 // Tăng mỗi lần sửa app, hiển thị ở màn hình PIN để biết máy đang chạy bản nào.
-const APP_VERSION = "10";
+const APP_VERSION = "11";
 
 // ===== Nhật ký dò lỗi =====
 // Ghi vào localStorage nên còn nguyên kể cả khi trang tự nạp lại — đây là
@@ -364,6 +694,8 @@ function tatCaKhoan() {
 function render() {
   const month = todayKey();
   const queue = store.queue;
+  // Đọc một lần cho cả vòng vẽ, thay vì đọc lại localStorage ở từng dòng.
+  const anhCho = store.anhCho;
   const all = tatCaKhoan();
 
   const inMonth = all.filter(e => String(e.date || "").startsWith(month));
@@ -428,7 +760,7 @@ function render() {
       const dauTien = thu ? "+" : (chuyen ? "⇄ " : (no ? (Logic.noLamTienRa(e) ? "↗ " : "↙ ") : ""));
       row.innerHTML = `
         <div class="item-main">
-          <div class="item-cat">${e.category || "Khác"}${e.unsent ? " ⏳" : ""}</div>
+          <div class="item-cat">${e.category || "Khác"}${e.unsent ? " ⏳" : ""}${Logic.coAnh(e, anhCho) ? " 📎" : ""}</div>
           <div class="item-meta">${meta}</div>
         </div>
         <div class="item-amount${lopTien}">${dauTien}${formatMoney(e.amount)} đ</div>`;
@@ -1627,9 +1959,65 @@ function moHopSua(id) {
 
   $("edit-note").value = e.note || "";
   veChipGoiY("edit-note", "edit-note-goiy", oDanhMuc.value);
+  anhSuaMoi = null;
+  anhSuaXoa = false;
+  veAnhHopSua();
   $("edit-error").hidden = true;
   datLaiNutXoa();
   $("edit-sheet").hidden = false;
+}
+
+// ===== Ảnh trong hộp sửa =====
+// anhSuaMoi: ảnh vừa chọn, chưa gửi. anhSuaXoa: anh muốn gỡ ảnh đang có.
+// Hai thứ này CHỈ được áp dụng khi bấm Lưu, không áp dụng ngay — bấm nhầm rồi
+// đóng hộp thì không mất gì.
+let anhSuaMoi = null;
+let anhSuaXoa = false;
+
+function veAnhHopSua() {
+  const khoi = $("edit-anh");
+  if (!khoi || !khoanDangSua) return;
+
+  const img = $("edit-anh-img");
+  const nhan = $("edit-anh-nhan");
+  const boNut = $("edit-anh-bo");
+  const themNut = $("edit-anh-them");
+
+  // Khoản còn chờ gửi thì ảnh của nó cũng đang nằm trong máy.
+  const coSan = !anhSuaXoa && Logic.coAnh(khoanDangSua, store.anhCho);
+
+  if (anhSuaMoi) {
+    img.src = anhUrl(anhSuaMoi);
+    img.hidden = false;
+    nhan.textContent = `Ảnh mới ${coAnhKb(anhSuaMoi.data)} KB · bấm Lưu để áp dụng`;
+    boNut.hidden = false;
+    themNut.textContent = "📷 Chọn ảnh khác";
+  } else if (anhSuaXoa) {
+    img.hidden = true;
+    img.removeAttribute("src");
+    nhan.textContent = "Sẽ gỡ ảnh khi bấm Lưu";
+    boNut.hidden = true;
+    themNut.textContent = "📷 Thêm ảnh";
+  } else if (coSan) {
+    // KHÔNG tải ảnh về ở đây: mở hộp sửa chỉ để đổi số tiền thì tải ảnh về là
+    // phí mạng. Bấm vào khung mới mở ảnh.
+    img.hidden = true;
+    img.removeAttribute("src");
+    nhan.textContent = "Có ảnh hoá đơn — bấm vào đây để xem";
+    boNut.hidden = false;
+    boNut.textContent = "Gỡ ảnh";
+    themNut.textContent = "📷 Đổi ảnh";
+  } else {
+    img.hidden = true;
+    img.removeAttribute("src");
+    nhan.textContent = "Chưa có ảnh hoá đơn";
+    boNut.hidden = true;
+    themNut.textContent = "📷 Thêm ảnh";
+  }
+
+  if (anhSuaMoi) boNut.textContent = "Bỏ ảnh mới";
+  nhan.classList.toggle("co-anh", coSan && !anhSuaMoi);
+  khoi.hidden = false;
 }
 
 // Xoá là việc không lấy lại được, nên bắt bấm hai lần thay vì hộp xác nhận
@@ -1691,6 +2079,25 @@ async function luuSuaKhoan() {
     await callApi("update", { entry: moi }, { retries: 2 });
     const i = entries.findIndex(x => x.id === cu.id);
     if (i >= 0) entries[i] = moi;
+
+    // Ảnh xử lý RIÊNG, sau khi khoản đã lưu xong. Gộp vào một lần gọi thì ảnh
+    // hỏng sẽ kéo theo cả phần sửa số tiền trượt mất.
+    if (anhSuaXoa && !anhSuaMoi) {
+      btn.textContent = "Đang gỡ ảnh…";
+      await callApi("xoaAnh", { id: cu.id }, { retries: 1 });
+      await donAnhTrongMay(cu.id, cu.anh);
+      const j = entries.findIndex(x => x.id === cu.id);
+      if (j >= 0) entries[j] = { ...entries[j], anh: "" };
+    } else if (anhSuaMoi) {
+      btn.textContent = "Đang gửi ảnh…";
+      // Ảnh cũ do Apps Script tự bỏ vào thùng rác khi nhận ảnh mới; ở đây chỉ
+      // cần dọn bản sao trong máy, không thì cache vẫn trả ra ảnh cũ.
+      if (cu.anh) await dbThu(dbXoa(KHO_CACHE, cu.anh));
+      await ganAnhVaoKhoan(cu.id, anhSuaMoi);
+    }
+
+    anhSuaMoi = null;
+    anhSuaXoa = false;
     $("edit-sheet").hidden = true;
     showToast("Đã cập nhật khoản này");
     render();
@@ -1720,6 +2127,8 @@ async function xoaKhoanDangSua() {
   try {
     await callApi("delete", { id: khoanDangSua.id }, { retries: 2 });
     entries = entries.filter(x => x.id !== khoanDangSua.id);
+    // Apps Script đã bỏ ảnh vào thùng rác Drive; phần còn lại nằm trong máy.
+    await donAnhTrongMay(khoanDangSua.id, khoanDangSua.anh);
     $("edit-sheet").hidden = true;
     showToast("Đã xoá khoản này");
     render();
@@ -2109,6 +2518,11 @@ async function saveEntry() {
   btn.disabled = true;
   btn.textContent = "Đang lưu…";
 
+  // Giữ lại rồi xoá khỏi màn hình ngay, để anh ghi khoản tiếp mà không sợ
+  // ảnh cũ dính sang khoản mới.
+  const anhKem = anhDangChon;
+  anhDangChon = null;
+
   try {
     await callApi("add", { entry }, {
       retries: 2,
@@ -2116,15 +2530,23 @@ async function saveEntry() {
     });
     entries.unshift(entry);
     showToast(`Đã lưu ${nhanLoai} ${formatMoney(amount)} đ`);
+    // Ảnh gửi SAU khi khoản đã lên Sheet: Drive cần biết gắn vào dòng nào.
+    // Tách hai bước cũng là để khoản luôn được lưu dù ảnh có hỏng.
+    if (anhKem) {
+      btn.textContent = "Đang gửi ảnh…";
+      await ganAnhVaoKhoan(entry.id, anhKem);
+    }
   } catch (err) {
     // Đã thử lại vẫn không được thì cất vào hàng chờ, không để mất dữ liệu.
     store.queue = [entry, ...store.queue];
+    if (anhKem) await catAnhChoCho(entry.id, anhKem);
     showToast(err.pinError
       ? "PIN đã đổi, anh mở lại sổ nhé"
       : "Chưa gửi được, đã lưu tạm và sẽ tự gửi lại");
   } finally {
     $("amount").value = "";
     $("note").value = "";
+    veXemTruocAnh();
     btn.disabled = false;
     btn.textContent = chuNut;   // trả về đúng chữ của loại đang chọn
     render();
@@ -2134,7 +2556,12 @@ async function saveEntry() {
 // Thử gửi lại những khoản còn kẹt trong hàng chờ
 async function flushQueue() {
   const queue = store.queue;
-  if (!queue.length) return;
+  // Hàng chờ khoản rỗng không có nghĩa là xong việc: ảnh có thể còn kẹt riêng,
+  // khi khoản đã gửi được mà lúc đó ảnh thì chưa.
+  if (!queue.length) {
+    if (store.anhCho.length) { await flushAnh(); render(); }
+    return;
+  }
 
   const remain = [];
   for (const entry of queue) {
@@ -2149,6 +2576,9 @@ async function flushQueue() {
   if (remain.length < queue.length) {
     showToast(`Đã gửi ${queue.length - remain.length} khoản còn kẹt`);
   }
+  // Ảnh gửi sau khoản: ảnh chỉ gắn được vào khoản đã nằm trên Sheet. Đảo thứ
+  // tự thì ảnh của khoản vừa gửi luôn trượt sang vòng sau.
+  await flushAnh();
   render();
 }
 
@@ -2165,6 +2595,7 @@ function init() {
   initTim();
   initHanMuc();
   initVi();
+  initAnh();
   initNo();
 
   // Vừa gõ vừa chấm phân cách nghìn cho dễ đọc
@@ -2194,6 +2625,17 @@ function init() {
   // Quay lại app sau khi khoá màn hình thì gửi nốt phần còn kẹt
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden && !$("app").hidden) flushQueue();
+  });
+
+  // Vừa có sóng lại thì gửi ngay, không bắt anh phải mở app ra lần nữa. Quan
+  // trọng với ảnh: ghi khoản trong hầm gửi xe, lên tới mặt đất là ảnh tự đi.
+  window.addEventListener("online", () => {
+    if (!$("app").hidden) flushQueue();
+  });
+
+  // Bấm nút lùi trên Android khi đang xem ảnh thì đóng ảnh, đừng thoát app.
+  document.addEventListener("keydown", ev => {
+    if (ev.key === "Escape" && !$("anh-xem").hidden) dongHopXemAnh();
   });
 
   initResetButton();

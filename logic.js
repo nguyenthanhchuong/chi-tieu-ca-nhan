@@ -893,7 +893,40 @@ const Logic = (function () {
     return { thu, chi, chuyen, no, soKhoan: (danhSach || []).length };
   }
 
+  // ===== Ảnh hoá đơn =====
+
+  // Khổ ảnh sau khi thu nhỏ, giữ nguyên tỉ lệ.
+  //
+  // Ảnh điện thoại thường 3000–4000px và nặng 3–6MB. Hoá đơn chỉ cần đọc được
+  // chữ, 1400px là thừa, mà file xuống còn khoảng một phần hai mươi. Không có
+  // bước này thì ghi một khoản bằng 4G phải chờ cả phút.
+  function kichThuocMoi(rong, cao, canhToiDa) {
+    const w = Number(rong) || 0;
+    const h = Number(cao) || 0;
+    const max = Number(canhToiDa) || 0;
+    if (w <= 0 || h <= 0) return { w: 0, h: 0 };
+
+    const canhLon = Math.max(w, h);
+    // Ảnh vốn đã nhỏ hơn mức cần thì GIỮ NGUYÊN. Phóng to chỉ làm file nặng
+    // thêm chứ không thêm được một nét chữ nào.
+    if (!max || canhLon <= max) return { w, h };
+
+    const ti = max / canhLon;
+    // Làm tròn có thể ra 0 với ảnh rất dẹt (vd 4000×2), mà canvas rộng 0 thì
+    // vẽ ra ảnh trắng.
+    return { w: Math.max(1, Math.round(w * ti)), h: Math.max(1, Math.round(h * ti)) };
+  }
+
+  // Khoản này có ảnh hoá đơn chưa? `choGui` là danh sách mã khoản có ảnh còn
+  // nằm trong máy chờ gửi — ảnh chụp lúc mất mạng cũng phải được tính là có.
+  function coAnh(e, choGui) {
+    if (!e) return false;
+    if (e.anh) return true;
+    return !!(choGui && choGui.indexOf(e.id) >= 0);
+  }
+
   return {
+    kichThuocMoi, coAnh,
     formatMoney, formatNgan, parseAmount, ngayKey, thangKey,
     chuoiThang, dienBienTheoThang, dienBienMuc,
     laKhoanThu, laChuyenLo, laChuyenVi, laKhoanChi,

@@ -101,9 +101,16 @@ const SHEET_CAIDAT = "CaiDat";
 //  Ví      : tiền ra/vào từ ví nào; lệnh chuyển ví thì đây là ví nguồn
 //  Ví đích : chỉ dùng cho lệnh chuyển ví
 //  Đối tượng : tên người/nơi vay nợ, chỉ dùng cho 4 loại vay nợ
+//  Ảnh     : mã file ảnh hoá đơn trên Drive. Chỉ lưu MÃ, không lưu ảnh, vì
+//            một ô Sheet chỉ chứa nổi 50.000 ký tự — chưa bằng một phần năm
+//            tấm hoá đơn đã nén.
 const HEADERS = ["ID", "Ngày", "Số tiền", "Danh mục", "Ghi chú", "Người chi",
                  "Thời điểm ghi", "Loại", "Lọ", "Lọ đích", "Phân bổ",
-                 "Ví", "Ví đích", "Đối tượng"];
+                 "Ví", "Ví đích", "Đối tượng", "Ảnh"];
+
+// Số thứ tự cột Ảnh. Viết thành hằng để nếu sau này chèn thêm cột thì chỉ
+// phải sửa một chỗ — ghi nhầm cột ảnh là ghi đè lên dữ liệu thật.
+const COT_ANH = 15;
 
 function getSheet() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -200,6 +207,18 @@ function doPost(e) {
       return reply(xoaKhoan(body.id));
     }
 
+    if (body.action === "uploadAnh") {
+      return reply(taiAnhLen(body));
+    }
+
+    if (body.action === "getAnh") {
+      return reply(layAnh(body.anhId));
+    }
+
+    if (body.action === "xoaAnh") {
+      return reply(xoaAnhCuaKhoan(body.id));
+    }
+
     if (body.action === "getSettings") {
       return reply({ ok: true, settings: docCaiDat() });
     }
@@ -242,7 +261,10 @@ function listEntries() {
       // Hàng cũ chưa có cột ví thì để trống, app sẽ đếm là "chưa gán ví"
       wallet: String(r[11] || ""),
       walletTo: String(r[12] || ""),
-      doiTuong: String(r[13] || "")
+      doiTuong: String(r[13] || ""),
+      // Chỉ mã file. Ảnh thật chỉ tải về khi anh bấm mở, vì gửi kèm mọi ảnh
+      // trong danh sách thì một lần nạp sổ sẽ nặng hàng chục MB.
+      anh: String(r[14] || "")
     };
   }).reverse();
 }
@@ -303,7 +325,8 @@ function addEntry(entry) {
     entry.alloc ? JSON.stringify(entry.alloc) : "",
     entry.wallet || "",
     entry.walletTo || "",
-    entry.doiTuong || ""
+    entry.doiTuong || "",
+    entry.anh || ""
   ]);
 
   return { ok: true };
@@ -360,8 +383,157 @@ function xoaKhoan(id) {
   const dong = timDongTheoId(sheet, id);
   if (!dong) return { ok: true, daXoaTruocDo: true };
 
+  // Bỏ luôn ảnh vào thùng rác Drive. Không làm bước này thì mỗi khoản bị xoá
+  // để lại một file mồ côi không còn đường nào mở tới, cứ thế đầy dần Drive.
+  xoaAnhTheoId_(String(sheet.getRange(dong, COT_ANH).getValue() || ""));
+
   sheet.deleteRow(dong);
   return { ok: true };
+}
+
+// ===== Ảnh hoá đơn =====
+// Ảnh nằm trên Drive của anh, Sheet chỉ giữ MÃ FILE.
+//
+// VÌ SAO KHÔNG NHÉT THẲNG ẢNH VÀO Ô SHEET: một ô chứa tối đa 50.000 ký tự,
+// mà mã hoá base64 còn làm phình thêm 33% — trần thật chỉ khoảng 37KB. Hoá
+// đơn nén hết cỡ vẫn 150–250KB, tức là không bao giờ vừa.
+//
+// RIÊNG TƯ: file KHÔNG được đặt chia sẻ công khai. Hoá đơn lộ ra anh mua gì,
+// ở đâu, lúc nào. Muốn xem phải gọi qua đây và kèm đúng PIN, y như mọi dữ
+// liệu khác của sổ.
+
+const TEN_THU_MUC_ANH = "So Ca Nhan - Hoa don";
+const PROP_THU_MUC_ANH = "FOLDER_ANH";
+
+// Giữ mã thư mục trong Script Properties thay vì tìm theo tên mỗi lần: anh đổi
+// tên thư mục trên Drive thì app vẫn chạy đúng, và cũng không tạo nhầm thành
+// hai thư mục trùng tên.
+function thuMucAnh_() {
+  const props = PropertiesService.getScriptProperties();
+  const id = props.getProperty(PROP_THU_MUC_ANH);
+  if (id) {
+    try { return DriveApp.getFolderById(id); } catch (err) { /* bị xoá hẳn, tạo lại */ }
+  }
+  const f = DriveApp.createFolder(TEN_THU_MUC_ANH);
+  props.setProperty(PROP_THU_MUC_ANH, f.getId());
+  return f;
+}
+
+const MIME_ANH_OK = ["image/jpeg", "image/png", "image/webp"];
+// Tính trên chuỗi base64. App đã nén còn ~200KB nên mức này rất rộng rãi;
+// để ngỏ thì một lần gửi hỏng có thể treo cả lần chạy.
+const BASE64_TOI_DA = 4 * 1024 * 1024;
+
+function duoiFile_(mime) {
+  if (mime === "image/png") return ".png";
+  if (mime === "image/webp") return ".webp";
+  return ".jpg";
+}
+
+function xoaAnhTheoId_(anhId) {
+  if (!anhId) return;
+  try { DriveApp.getFileById(String(anhId)).setTrashed(true); } catch (err) { /* đã xoá rồi */ }
+}
+
+// Mã ảnh này có đang được một khoản nào trong Sheet trỏ tới không?
+//
+// ĐÂY LÀ CHỐT CHẶN AN TOÀN, KHÔNG PHẢI KIỂM TRA THỪA: Web App chạy bằng quyền
+// của anh và có quyền Drive. Nếu layAnh nhận bừa mã file do người gọi đưa thì
+// bất kỳ ai có PIN đều đọc được MỌI file trong Drive của anh — hợp đồng, ảnh
+// cá nhân, tất cả — chứ không riêng hoá đơn của sổ này.
+function anhCuaSo_(id) {
+  const sheet = getSheet();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return false;
+  const cot = sheet.getRange(2, COT_ANH, lastRow - 1, 1).getValues();
+  for (let i = 0; i < cot.length; i++) {
+    if (String(cot[i][0]) === String(id)) return true;
+  }
+  return false;
+}
+
+function taiAnhLen(body) {
+  const id = String((body && body.id) || "");
+  const data = String((body && body.data) || "");
+  const mime = String((body && body.mime) || "image/jpeg");
+
+  if (!id) return { ok: false, error: "Thiếu mã khoản để gắn ảnh" };
+  if (!data) return { ok: false, error: "Không có dữ liệu ảnh" };
+  if (MIME_ANH_OK.indexOf(mime) < 0) return { ok: false, error: "Không nhận định dạng " + mime };
+  if (data.length > BASE64_TOI_DA) return { ok: false, error: "Ảnh quá lớn" };
+
+  const sheet = getSheet();
+  const dong = timDongTheoId(sheet, id);
+  // Khoản chưa lên Sheet thì chưa gắn ảnh vào đâu được. Trả cờ riêng để app
+  // biết đường GIỮ LẠI ảnh trong hàng chờ rồi gửi sau, thay vì tưởng hỏng và
+  // vứt đi — trường hợp này xảy ra thật khi cả khoản lẫn ảnh cùng ghi lúc mất
+  // mạng và ảnh được gửi trước.
+  if (!dong) return { ok: false, error: "Chưa có khoản này trên Sheet", chuaCoKhoan: true };
+
+  let blob;
+  try {
+    blob = Utilities.newBlob(Utilities.base64Decode(data), mime,
+                             "hoadon-" + id + duoiFile_(mime));
+  } catch (err) {
+    return { ok: false, error: "Ảnh hỏng, không đọc được" };
+  }
+
+  // Thay ảnh thì bỏ ảnh cũ đi, đừng để lại file không ai trỏ tới nữa.
+  xoaAnhTheoId_(String(sheet.getRange(dong, COT_ANH).getValue() || ""));
+
+  const file = thuMucAnh_().createFile(blob);
+  sheet.getRange(dong, COT_ANH).setValue(file.getId());
+  return { ok: true, anhId: file.getId() };
+}
+
+function layAnh(anhId) {
+  const id = String(anhId || "");
+  if (!id) return { ok: false, error: "Thiếu mã ảnh" };
+  if (!anhCuaSo_(id)) return { ok: false, error: "Mã ảnh không thuộc sổ này" };
+
+  try {
+    const blob = DriveApp.getFileById(id).getBlob();
+    return {
+      ok: true,
+      mime: blob.getContentType(),
+      data: Utilities.base64Encode(blob.getBytes())
+    };
+  } catch (err) {
+    return { ok: false, error: "Không mở được ảnh, có thể đã bị xoá khỏi Drive" };
+  }
+}
+
+// Gỡ ảnh khỏi một khoản mà vẫn giữ khoản đó.
+//
+// VÌ SAO TÁCH RIÊNG, KHÔNG GỘP VÀO suaKhoan: suaKhoan nhận nguyên khoản do app
+// gửi lên. Nếu để nó ghi cả cột Ảnh thì một bản app cũ (chưa biết cột này) sẽ
+// gửi khoản thiếu trường anh và xoá sạch ảnh của mọi khoản được sửa.
+function xoaAnhCuaKhoan(id) {
+  if (!id) return { ok: false, error: "Thiếu mã khoản" };
+  const sheet = getSheet();
+  const dong = timDongTheoId(sheet, id);
+  if (!dong) return { ok: true, daXoaTruocDo: true };
+
+  xoaAnhTheoId_(String(sheet.getRange(dong, COT_ANH).getValue() || ""));
+  sheet.getRange(dong, COT_ANH).setValue("");
+  return { ok: true };
+}
+
+// Chạy MỘT LẦN để Google xin quyền Drive.
+//
+// VÌ SAO CẦN: Google chỉ xin quyền cho đúng nhánh code đang chạy. Deploy xong
+// mà chưa có đoạn nào đụng Drive chạy qua thì quyền Drive chưa được cấp, và
+// lần đầu anh chụp hoá đơn sẽ văng lỗi quyền. Chạy hàm này là xin trước, đồng
+// thời tạo luôn thư mục chứa ảnh nên biết chắc đường ghi thông.
+function thuTaiAnh() {
+  const thuMuc = thuMucAnh_();
+  const f = thuMuc.createFile(
+    Utilities.newBlob("thu quyen Drive", "text/plain", "thu-quyen.txt"));
+  f.setTrashed(true);
+  return "Quyền Drive đã thông.\n" +
+         "Thư mục chứa hoá đơn: \"" + thuMuc.getName() + "\"\n" +
+         "Mã thư mục: " + thuMuc.getId() + "\n" +
+         "Đã tạo thử một file rồi xoá ngay, không để lại gì.";
 }
 
 // ===== Cài đặt dùng chung cho mọi thiết bị =====

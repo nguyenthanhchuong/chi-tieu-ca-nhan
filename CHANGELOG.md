@@ -21,6 +21,49 @@ Nếu đã cài app ra màn hình chính thì bấm **Tải lại bản mới** 
 
 ---
 
+## v11 — Ảnh hoá đơn, chụp được cả lúc mất mạng
+*Apps Script: **CÓ ĐỔI** — phải deploy lại (thêm cột "Ảnh" + quyền Drive)*
+
+Mỗi khoản gắn được một ảnh hoá đơn. Ảnh nằm trên Google Drive của anh, Sheet
+chỉ giữ mã file.
+
+- **Nút 📷 Ảnh hoá đơn** ở màn nhập, chọn được giữa chụp mới và lấy ảnh có sẵn
+- **Nén ngay trên máy trước khi gửi**: cạnh dài về 1400px, JPEG 72%. Ảnh gốc
+  4MB xuống còn khoảng 200KB. Không có bước này thì ghi một khoản bằng 4G phải
+  chờ cả phút
+- **Dấu 📎** ở danh sách cho biết khoản nào có hoá đơn. Ảnh chỉ tải khi anh bấm
+  vào khoản — tải sẵn cả 25 dòng là vài MB mỗi lần vẽ
+- Hộp sửa: xem, đổi, gỡ ảnh. Thay đổi chỉ áp dụng khi bấm **Lưu**, bấm nhầm rồi
+  đóng hộp thì không mất gì
+- Xoá khoản thì ảnh cũng vào thùng rác Drive, không để lại file mồ côi
+
+**Chụp lúc mất mạng**
+- Ảnh cất vào **IndexedDB**, không phải localStorage. Chỗ localStorage chỉ có
+  ~5MB cho cả sổ mà hàng chờ khoản cũng nằm đó — vài tấm ảnh là đầy, và khi đầy
+  thì khoản ghi lúc mất mạng mất theo
+- Gửi lại **tự động**: khi mở lại app, khi quay lại từ màn hình khoá, và ngay
+  khi máy có sóng trở lại
+- Ảnh gửi **sau** khoản, vì ảnh chỉ gắn được vào khoản đã nằm trên Sheet. Gửi
+  hỏng thì **giữ nguyên ảnh** chờ vòng sau, không bao giờ vứt đi
+- Ảnh đã xem được giữ lại trong máy (50 tấm gần nhất) nên mất mạng vẫn mở lại
+  được hoá đơn cũ
+
+**Riêng tư**
+- File trên Drive **không** đặt chia sẻ công khai. Hoá đơn lộ ra anh mua gì, ở
+  đâu, lúc nào. Muốn xem phải gọi qua Apps Script kèm đúng PIN
+- Apps Script chỉ trả ảnh đang được một khoản trong Sheet trỏ tới. Không có
+  chốt này thì ai có PIN sẽ đọc được mọi file trong Drive của anh, vì Web App
+  chạy bằng quyền của anh
+
+Số ca test: 175 → 184
+
+> **Việc anh cần làm:** dán lại `apps-script.gs`, rồi *Deploy → Manage
+> deployments → sửa → Version: New version → Deploy*.
+>
+> **Rồi chạy hàm `thuTaiAnh` một lần** để Google xin quyền Drive. Không chạy
+> thì lần đầu chụp hoá đơn sẽ văng lỗi quyền — Google chỉ xin quyền cho đúng
+> nhánh code chạy tới, y như vụ gửi mail nhắc đáo hạn ở v9.
+
 ## v10 — Nội dung khoản: bắt buộc nhập, có gợi ý, có tổng hợp
 *Apps Script: không đổi — dữ liệu vẫn nằm ở cột "Ghi chú" có sẵn*
 
