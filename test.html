@@ -1089,6 +1089,67 @@ test("danh sách rỗng không làm vỡ", () => {
   bang(Logic.khoanCuaMuc(null, "2026-09-01", "2026-09-30", "danhMucChi", "X").length, 0);
 });
 
+nhom("Ảnh hoá đơn");
+
+test("thu nhỏ ảnh dọc: cạnh lớn về đúng mức, giữ tỉ lệ", () => {
+  const r = Logic.kichThuocMoi(3000, 4000, 1400);
+  bang(r.h, 1400);
+  bang(r.w, 1050);
+  // Tỉ lệ phải giữ nguyên, lệch đi là hoá đơn méo chữ
+  bang(Math.abs(r.w / r.h - 3000 / 4000) < 0.001, true);
+});
+
+test("thu nhỏ ảnh ngang: cạnh lớn là chiều rộng", () => {
+  const r = Logic.kichThuocMoi(4032, 3024, 1400);
+  bang(r.w, 1400);
+  bang(r.h, 1050);
+});
+
+test("ảnh vốn đã nhỏ thì GIỮ NGUYÊN, không phóng to", () => {
+  // Phóng to chỉ làm file nặng thêm mà không rõ thêm nét nào
+  const r = Logic.kichThuocMoi(800, 600, 1400);
+  bang(r.w, 800);
+  bang(r.h, 600);
+});
+
+test("ảnh đúng bằng mức tối đa thì không đụng tới", () => {
+  const r = Logic.kichThuocMoi(1400, 900, 1400);
+  bang(r.w, 1400);
+  bang(r.h, 900);
+});
+
+test("ảnh rất dẹt không bị thu về cạnh 0", () => {
+  // 4000×2 thu theo tỉ lệ ra 0.7px; làm tròn thành 0 thì canvas vẽ ra ảnh trắng
+  const r = Logic.kichThuocMoi(4000, 2, 1400);
+  bang(r.w, 1400);
+  bang(r.h >= 1, true);
+});
+
+test("kích thước vô lý trả về 0, không ném lỗi", () => {
+  bang(Logic.kichThuocMoi(0, 100, 1400).w, 0);
+  bang(Logic.kichThuocMoi(100, 0, 1400).h, 0);
+  bang(Logic.kichThuocMoi(null, null, 1400).w, 0);
+});
+
+test("khoản đã có ảnh trên Drive thì tính là có ảnh", () => {
+  bang(Logic.coAnh({ id: "a", anh: "1AbC" }, []), true);
+  bang(Logic.coAnh({ id: "a", anh: "" }, []), false);
+  bang(Logic.coAnh({ id: "a" }, []), false);
+});
+
+test("ảnh chụp lúc mất mạng cũng tính là có ảnh", () => {
+  // Chưa lên Drive nên trường anh còn rỗng, nhưng danh sách chờ có tên nó.
+  // Không tính thì dấu kẹp giấy biến mất và anh tưởng ảnh đã mất.
+  bang(Logic.coAnh({ id: "a", anh: "" }, ["a"]), true);
+  bang(Logic.coAnh({ id: "b", anh: "" }, ["a"]), false);
+});
+
+test("coAnh không vỡ khi thiếu tham số", () => {
+  bang(Logic.coAnh(null, []), false);
+  bang(Logic.coAnh({ id: "a" }, null), false);
+  bang(Logic.coAnh({ id: "a" }), false);
+});
+
 (function veKetQua() {
   const dat = ketQua.filter(k => k.dat).length;
   const hong = ketQua.length - dat;
