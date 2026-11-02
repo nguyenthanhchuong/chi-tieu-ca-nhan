@@ -458,7 +458,7 @@ function initNgay() {
 
 // ===== Gọi API =====
 // Tăng mỗi lần sửa app, hiển thị ở màn hình PIN để biết máy đang chạy bản nào.
-const APP_VERSION = "12";
+const APP_VERSION = "13";
 
 // ===== Nhật ký dò lỗi =====
 // Ghi vào localStorage nên còn nguyên kể cả khi trang tự nạp lại — đây là
@@ -2595,69 +2595,106 @@ async function saveEntry() {
   };
 
   const nhanLoai = selectedKind === "Thu" ? "khoản thu" : "khoản chi";
-  const btn = $("btn-save");
-  const chuNut = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = "Đang lưu…";
 
   // Giữ lại rồi xoá khỏi màn hình ngay, để anh ghi khoản tiếp mà không sợ
   // ảnh cũ dính sang khoản mới.
   const anhKem = anhDangChon;
   anhDangChon = null;
 
+  // Ghi vào hàng chờ TRƯỚC, gửi mạng sau và không chờ kết quả.
+  //
+  // Một lượt gọi Apps Script mất 2,5–5 giây, gần hết là thời gian Google khởi
+  // động container và chuyển hướng sang script.googleusercontent.com — không
+  // sửa được từ phía app. Bắt người dùng ngồi nhìn "Đang lưu…" chừng đó là vô
+  // ích: khoản đã nằm an toàn trong máy ngay từ dòng dưới đây rồi, gửi lên
+  // Sheet được hay không chỉ còn là việc của nền.
+  //
+  // Đây cũng chính là đường đi cũ khi mất mạng, nay thành đường đi DUY NHẤT —
+  // nhờ vậy lúc có mạng và lúc mất mạng chạy cùng một mã, không còn hai nhánh
+  // mà chỉ một nhánh được thử kỹ.
+  store.queue = [entry, ...store.queue];
   try {
-    await callApi("add", { entry }, {
-      retries: 2,
-      onRetry: (lan, tong) => { btn.textContent = `Mạng chậm, thử lại ${lan}/${tong}…`; }
-    });
-    entries.unshift(entry);
-    showToast(`Đã lưu ${nhanLoai} ${formatMoney(amount)} đ`);
-    // Ảnh gửi SAU khi khoản đã lên Sheet: Drive cần biết gắn vào dòng nào.
-    // Tách hai bước cũng là để khoản luôn được lưu dù ảnh có hỏng.
-    if (anhKem) {
-      btn.textContent = "Đang gửi ảnh…";
-      await ganAnhVaoKhoan(entry.id, anhKem);
-    }
-  } catch (err) {
-    // Đã thử lại vẫn không được thì cất vào hàng chờ, không để mất dữ liệu.
-    store.queue = [entry, ...store.queue];
     if (anhKem) await catAnhChoCho(entry.id, anhKem);
-    showToast(err.pinError
-      ? "PIN đã đổi, anh mở lại sổ nhé"
-      : "Chưa gửi được, đã lưu tạm và sẽ tự gửi lại");
+  } catch (err) {
+    // Kho ảnh hỏng thì mất ảnh, nhưng khoản thì không được mất theo.
+    showToast("Không cất được ảnh trong máy, khoản vẫn đã ghi");
+  }
+
+  showToast(`Đã ghi ${nhanLoai} ${formatMoney(amount)} đ`);
+
+  $("amount").value = "";
+  $("note").value = "";
+  veXemTruocAnh();
+  render();
+
+  // Nhắc hạn mức ngay lúc vừa ghi, chờ 2 giây cho toast trước hiện xong
+  setTimeout(() => canhBaoSauKhiGhi(entry), 2000);
+
+  // Cố ý KHÔNG await: gửi xong thì dấu ⏳ tự mất, gửi hỏng thì hàng chờ giữ
+  // lại và lần sau tự thử tiếp.
+  flushQueue({ im: true });
+}
+
+// Chặn hai lượt gửi chạy chồng lên nhau. Giờ mỗi lần lưu khoản đều gọi hàm
+// này, nên ghi nhanh ba khoản liền tay là có ba lượt cùng chạy trên cùng một
+// hàng chờ: cùng gửi một khoản nhiều lần (máy chủ chặn trùng theo ID nên Sheet
+// không sao) và tệ hơn là unshift nó nhiều lần vào entries, làm khoản hiện
+// hai dòng trên màn hình.
+let dangGuiHangCho = false;
+
+// Thử gửi lại những khoản còn kẹt trong hàng chờ.
+// im = true khi lượt gửi này là hệ quả của việc vừa lưu khoản, không phải
+// người dùng chủ động yêu cầu gửi lại — lúc đó gửi trót lọt thì im lặng, vì
+// dấu ⏳ biến mất đã là lời báo đủ rồi.
+async function flushQueue(options = {}) {
+  if (dangGuiHangCho) return;
+  dangGuiHangCho = true;
+  try {
+    await guiHangCho(options);
   } finally {
-    $("amount").value = "";
-    $("note").value = "";
-    veXemTruocAnh();
-    btn.disabled = false;
-    btn.textContent = chuNut;   // trả về đúng chữ của loại đang chọn
-    render();
+    dangGuiHangCho = false;
   }
 }
 
-// Thử gửi lại những khoản còn kẹt trong hàng chờ
-async function flushQueue() {
-  const queue = store.queue;
-  // Hàng chờ khoản rỗng không có nghĩa là xong việc: ảnh có thể còn kẹt riêng,
-  // khi khoản đã gửi được mà lúc đó ảnh thì chưa.
-  if (!queue.length) {
-    if (store.anhCho.length) { await flushAnh(); render(); }
-    return;
-  }
+async function guiHangCho({ im = false } = {}) {
+  let daGuiXong = 0;
+  let loiPin = false;
+  const hong = new Set();   // id đã thử và hỏng trong lượt này, đừng thử lại ngay
 
-  const remain = [];
-  for (const entry of queue) {
+  // Vòng lặp đọc lại store.queue ở MỖI bước, cố ý không chụp hàng chờ một lần
+  // từ đầu rồi gán đè `store.queue = remain` ở cuối.
+  //
+  // Lý do: anh ghi khoản mới ngay trong lúc khoản trước còn đang bay lên mạng
+  // (mất 2,5–5 giây, thừa thời gian gõ thêm hai khoản nữa). Bản chụp từ đầu
+  // không có những khoản đó, nên câu gán đè ở cuối sẽ XOÁ SẠCH chúng. Đã dính
+  // đúng lỗi này khi thử ghi nhanh ba khoản: chỉ khoản đầu lên Sheet, hai
+  // khoản sau biến mất không dấu vết.
+  while (true) {
+    const tiep = store.queue.find(e => !hong.has(e.id));
+    if (!tiep) break;
     try {
-      await callApi("add", { entry });
-      entries.unshift(entry);
-    } catch {
-      remain.push(entry);
+      await callApi("add", { entry: tiep });
+      entries.unshift(tiep);
+      store.queue = store.queue.filter(e => e.id !== tiep.id);
+      daGuiXong++;
+    } catch (err) {
+      if (err && err.pinError) loiPin = true;
+      hong.add(tiep.id);
     }
   }
-  store.queue = remain;
-  if (remain.length < queue.length) {
-    showToast(`Đã gửi ${queue.length - remain.length} khoản còn kẹt`);
+
+  const conKet = store.queue.length;
+
+  if (loiPin) {
+    // Nuốt lỗi PIN ở đây là tình huống nguy hiểm nhất của cách lưu nền: khoản
+    // nằm mãi trong hàng chờ mà anh đã thấy chữ "Đã ghi" nên tưởng xong rồi.
+    showToast("PIN đã đổi, khoản chưa lên Sheet — anh mở lại sổ nhé");
+  } else if (conKet) {
+    showToast(`${conKet} khoản chưa gửi được, sẽ tự gửi lại`);
+  } else if (daGuiXong && !im) {
+    showToast(`Đã gửi ${daGuiXong} khoản còn kẹt`);
   }
+
   // Ảnh gửi sau khoản: ảnh chỉ gắn được vào khoản đã nằm trên Sheet. Đảo thứ
   // tự thì ảnh của khoản vừa gửi luôn trượt sang vòng sau.
   await flushAnh();
