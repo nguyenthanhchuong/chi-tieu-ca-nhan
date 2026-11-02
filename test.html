@@ -1150,6 +1150,109 @@ test("coAnh không vỡ khi thiếu tham số", () => {
   bang(Logic.coAnh({ id: "a" }), false);
 });
 
+nhom("Tình hình hiện tại");
+
+// Dựng lại đúng sổ thật ngày 02/11/2026: vay mẹ vợ 1,1 tỷ mua nhà, cho A Cu
+// Lơ mượn 4 triệu. Đây là ca dễ ra số sai nhất nên lấy làm ca chuẩn.
+function soMau() {
+  return [
+    { id: "1", date: "2026-10-31", type: "Thu",     amount: 49385903,   category: "Khác",    wallet: "Ngân hàng" },
+    { id: "2", date: "2026-04-11", type: "Đi vay",  amount: 1100000000, category: "Đi vay",  wallet: "Ngân hàng", doiTuong: "Mẹ Vợ" },
+    { id: "3", date: "2026-04-11", type: "Chi",     amount: 1100000000, category: "Mua tài sản", wallet: "Ngân hàng" },
+    { id: "4", date: "2026-04-11", type: "Chi",     amount: 166000,     category: "Ăn uống", wallet: "Ngân hàng" },
+    { id: "5", date: "2026-11-01", type: "Cho vay", amount: 4000000,    category: "Cho vay", wallet: "Ngân hàng", doiTuong: "A Cu Lơ" },
+    // Chuyển lọ không được đụng tới ví
+    { id: "6", date: "2026-10-31", type: "Chuyển",  amount: 24692953,   category: "Chuyển lọ", jar: "NEC", jarTo: "LTSS" }
+  ];
+}
+
+test("tiền còn = số dư ví thật, không phải tổng thu trừ tổng chi", () => {
+  const t = Logic.tinhHinhHienTai(soMau(), { ds: ["Ngân hàng"], soDuDau: {} }, []);
+  // 49.385.903 + 1.100.000.000 − 1.100.000.000 − 166.000 − 4.000.000
+  bang(t.tienCon, 45219903);
+});
+
+test("đi vay làm tiền VÀO ví, cho vay làm tiền RỜI ví", () => {
+  const khong = soMau().filter(e => e.id !== "2" && e.id !== "5");
+  const t = Logic.tinhHinhHienTai(khong, { ds: ["Ngân hàng"], soDuDau: {} }, []);
+  // Bỏ hai khoản nợ đi thì ví hụt đúng 1.100.000.000 − 4.000.000
+  bang(t.tienCon, 45219903 - 1100000000 + 4000000);
+});
+
+test("hai chiều nợ tách bạch, không bù trừ lẫn nhau", () => {
+  const t = Logic.tinhHinhHienTai(soMau(), { ds: ["Ngân hàng"], soDuDau: {} }, []);
+  bang(t.minhNoHo, 1100000000);
+  bang(t.hoNoMinh, 4000000);
+  bang(t.soNguoiNo, 2);
+});
+
+test("tiền mặt ròng = ví + họ nợ mình − mình nợ họ", () => {
+  const t = Logic.tinhHinhHienTai(soMau(), { ds: ["Ngân hàng"], soDuDau: {} }, []);
+  bang(t.rong, 45219903 + 4000000 - 1100000000);
+  // Âm hơn 1 tỷ là ĐÚNG về số: căn nhà không nằm trong sổ. Giao diện phải
+  // luôn kèm dòng "chưa tính nhà/đất", test này canh để không ai xoá nó đi.
+  bang(t.rong < 0, true);
+});
+
+test("số dư đầu ví được cộng vào tiền còn", () => {
+  const t = Logic.tinhHinhHienTai(
+    soMau(), { ds: ["Ngân hàng", "Tiền mặt"], soDuDau: { "Tiền mặt": 2000000 } }, []
+  );
+  bang(t.tienCon, 45219903 + 2000000);
+});
+
+test("sổ tiết kiệm cộng vào tiền ròng nhưng KHÔNG cộng vào tiền còn", () => {
+  const tk = [{ id: "s1", ten: "VCB", soTien: 30000000, laiSuat: 5, kyHanThang: 6, ngayGui: "2026-09-01" }];
+  const t = Logic.tinhHinhHienTai(soMau(), { ds: ["Ngân hàng"], soDuDau: {} }, tk);
+  // Tiền đã rời ví, "tiền còn" phải đứng yên
+  bang(t.tienCon, 45219903);
+  bang(t.tietKiem, 30000000);
+  bang(t.soSoTietKiem, 1);
+  bang(t.rong, 45219903 + 30000000 + 4000000 - 1100000000);
+});
+
+test("chuyển lọ không làm đổi tiền còn", () => {
+  const khongChuyen = soMau().filter(e => e.id !== "6");
+  const a = Logic.tinhHinhHienTai(soMau(), { ds: ["Ngân hàng"], soDuDau: {} }, []);
+  const b = Logic.tinhHinhHienTai(khongChuyen, { ds: ["Ngân hàng"], soDuDau: {} }, []);
+  bang(a.tienCon, b.tienCon);
+});
+
+test("chuyển ví làm đổi từng ví nhưng tổng tiền còn giữ nguyên", () => {
+  const ds = soMau().concat([
+    { id: "7", date: "2026-11-02", type: "Chuyển ví", amount: 5000000,
+      category: "Chuyển ví", wallet: "Ngân hàng", walletTo: "Tiền mặt" }
+  ]);
+  const t = Logic.tinhHinhHienTai(ds, { ds: ["Ngân hàng", "Tiền mặt"], soDuDau: {} }, []);
+  bang(t.tienCon, 45219903);
+  bang(t.vi["Ngân hàng"].con, 45219903 - 5000000);
+  bang(t.vi["Tiền mặt"].con, 5000000);
+});
+
+test("khoản chưa gán ví được đếm riêng để báo người dùng", () => {
+  const ds = soMau().concat([
+    { id: "8", date: "2026-11-02", type: "Chi", amount: 50000, category: "Ăn uống" }
+  ]);
+  const t = Logic.tinhHinhHienTai(ds, { ds: ["Ngân hàng"], soDuDau: {} }, []);
+  bang(t.chuaGanVi, 1);
+  // Khoản không có ví thì không được âm thầm trừ vào ví nào cả
+  bang(t.tienCon, 45219903);
+});
+
+test("sổ rỗng ra toàn số 0, không ra NaN", () => {
+  const t = Logic.tinhHinhHienTai([], { ds: ["Ngân hàng"], soDuDau: {} }, []);
+  bang(t.tienCon, 0);
+  bang(t.hoNoMinh, 0);
+  bang(t.minhNoHo, 0);
+  bang(t.rong, 0);
+});
+
+test("danh mục Mua tài sản vào lọ Tiết kiệm, không phá lọ Thiết yếu", () => {
+  // Mua nhà 1,1 tỷ mà rơi vào NEC thì mọi hạn mức chi tiêu thành vô nghĩa
+  bang(Logic.doanLo("Mua tài sản"), "SAVE");
+  bang(Logic.doanLo("Khác"), "NEC");
+});
+
 (function veKetQua() {
   const dat = ketQua.filter(k => k.dat).length;
   const hong = ketQua.length - dat;

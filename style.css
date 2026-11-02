@@ -1265,3 +1265,58 @@ body {
   margin: 0;
   padding: 0 24px;
 }
+
+/* ===== Tình hình hiện tại (đầu tab Thống kê) ===== */
+.hiennay { margin-bottom: 16px; }
+
+.hn-hang {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  background: var(--card);
+  border: none;
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  text-align: left;
+  font-family: inherit;
+}
+.hn-hang.bam { cursor: pointer; }
+.hn-hang.bam:active { filter: brightness(1.12); }
+
+.hn-than { flex: 1; min-width: 0; }
+.hn-ten { font-size: 13.5px; font-weight: 700; }
+.hn-phu { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+.hn-so {
+  flex-shrink: 0;
+  text-align: right;
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.hn-so.con        { color: var(--thu); }
+.hn-so.ho-no-minh { color: var(--thu); }
+.hn-so.minh-no-ho { color: var(--danger); }
+.hn-so.am         { color: var(--danger); }
+
+/* Dòng tổng phải tách hẳn khỏi các dòng thành phần phía trên. Dùng class
+   riêng chứ KHÔNG dùng :last-of-type — dòng nợ là <button>, dòng tổng là
+   <div>, nên last-of-type bắt trúng cả hai. */
+.hn-hang.hn-tong { margin-top: 10px; border: 1px solid var(--line); }
+
+/* Lời nhắc "chưa tính nhà đất" phải đi liền số ròng, không được rời ra xa:
+   nhìn thấy số âm mà chưa đọc tới chú thích là hiểu sai ngay. */
+.hn-chu {
+  font-size: 11px;
+  color: var(--muted);
+  margin: 6px 2px 0;
+  line-height: 1.5;
+}
+.hn-canh {
+  font-size: 11px;
+  color: var(--danger);
+  margin: 6px 2px 0;
+  line-height: 1.5;
+}

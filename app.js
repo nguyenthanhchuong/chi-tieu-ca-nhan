@@ -10,7 +10,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbyojlwjaXl4iq4zguZFS0Ft
 const CATEGORIES_CHI = [
   "Ăn uống", "Cà phê/Nhậu", "Đi lại", "Điện thoại/Internet",
   "Sức khoẻ", "Mua sắm cá nhân", "Thể thao", "Giải trí",
-  "Học tập", "Khác"
+  "Học tập", "Mua tài sản", "Khác"
 ];
 const CATEGORIES_THU = [
   "Lương", "Thưởng", "Tiền tiêu vặt", "Kinh doanh",
@@ -458,7 +458,7 @@ function initNgay() {
 
 // ===== Gọi API =====
 // Tăng mỗi lần sửa app, hiển thị ở màn hình PIN để biết máy đang chạy bản nào.
-const APP_VERSION = "11";
+const APP_VERSION = "12";
 
 // ===== Nhật ký dò lỗi =====
 // Ghi vào localStorage nên còn nguyên kể cả khi trang tự nạp lại — đây là
@@ -1772,9 +1772,91 @@ function renderChartControls() {
   oChuoi.onchange = () => { chartChuoi = oChuoi.value; veBieuDo(); };
 }
 
+// ===== Tình hình hiện tại =====
+// Khối này nằm trên cùng tab Thống kê và KHÔNG chịu ảnh hưởng của bộ chọn kỳ:
+// nó là ảnh chụp tại hôm nay, trong khi phần còn lại của tab là số của một kỳ.
+// Trộn hai thứ vào một bộ lọc là cách chắc chắn nhất để ra số sai.
+function hangHienTai(ten, phu, tien, kieu, bamVao, themLop) {
+  const am = tien < 0;
+  const so = (am ? "−" : "") + formatMoney(Math.abs(tien)) + " đ";
+  const the = bamVao ? "button" : "div";
+  const them = bamVao ? ` data-mo="${bamVao}"` : "";
+  return `<${the} type="button" class="hn-hang${bamVao ? " bam" : ""}${themLop ? " " + themLop : ""}"${them}>
+            <div class="hn-than">
+              <div class="hn-ten">${ten}</div>
+              <div class="hn-phu">${phu}</div>
+            </div>
+            <div class="hn-so ${kieu}">${so}</div>
+          </${the}>`;
+}
+
+function renderHienTai() {
+  const box = $("hiennay-block");
+  if (!box) return;
+
+  const t = Logic.tinhHinhHienTai(tatCaKhoan(), caiDatVi, dsTietKiem);
+
+  // Chỉ đếm ví có phát sinh hoặc có số dư đầu — ví mặc định chưa dùng bao giờ
+  // mà đếm vào thì câu "trong 4 ví" là nói dối.
+  const viDung = t.thuTuVi.filter(v => {
+    const o = t.vi[v];
+    return o.con !== 0 || o.thu || o.chi || o.den || o.di || o.soDuDau;
+  }).length;
+
+  let html = `<h3>Tình hình hiện tại</h3>`;
+
+  html += hangHienTai(
+    "Tiền còn",
+    viDung ? `đang nằm trong ${viDung} ví` : "chưa có ví nào có tiền",
+    t.tienCon, t.tienCon < 0 ? "am" : "con", "tab-btn-vi"
+  );
+
+  if (t.tietKiem > 0) {
+    html += hangHienTai(
+      "Gửi tiết kiệm", `${t.soSoTietKiem} sổ, tiền của mình nhưng chưa rút được`,
+      t.tietKiem, "con", "tab-btn-no"
+    );
+  }
+
+  html += hangHienTai(
+    "Người ta nợ mình", "tiền sẽ thu về",
+    t.hoNoMinh, "ho-no-minh", "tab-btn-no"
+  );
+  html += hangHienTai(
+    "Mình đang nợ", "tiền sẽ phải trả",
+    t.minhNoHo, "minh-no-ho", "tab-btn-no"
+  );
+
+  html += hangHienTai(
+    "Tiền mặt ròng", "cộng hết lại, trừ phần phải trả",
+    t.rong, t.rong < 0 ? "am" : "con", null, "hn-tong"
+  );
+
+  // Dòng này là bắt buộc. Vay 1,1 tỷ mua nhà thì "tiền mặt ròng" âm 1 tỷ,
+  // đúng về số nhưng sai về tình hình — sổ không có chỗ ghi căn nhà.
+  html += `<p class="hn-chu">Chưa tính nhà, đất, xe và tài sản khác — sổ này
+           chỉ theo dõi tiền.</p>`;
+
+  if (t.chuaGanVi) {
+    html += `<p class="hn-canh">${t.chuaGanVi} khoản chưa gán ví nên không nằm
+             trong “Tiền còn”.</p>`;
+  }
+
+  box.innerHTML = html;
+
+  box.querySelectorAll("[data-mo]").forEach(n => {
+    n.addEventListener("click", () => {
+      const nut = $(n.getAttribute("data-mo"));
+      if (nut) nut.click();
+    });
+  });
+}
+
 function renderStats() {
   const modeBox = $("stat-modes");
   if (!modeBox) return;
+
+  renderHienTai();
 
   modeBox.innerHTML = "";
   STAT_MODES.forEach(m => {

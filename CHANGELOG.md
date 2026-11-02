@@ -21,6 +21,36 @@ Nếu đã cài app ra màn hình chính thì bấm **Tải lại bản mới** 
 
 ---
 
+## v12 — Tình hình hiện tại ở đầu tab Thống kê
+
+Thêm khối **Tình hình hiện tại** lên trên cùng tab Thống kê. Khác với phần còn
+lại của tab, khối này là ảnh chụp tại hôm nay và **không chịu ảnh hưởng của bộ
+chọn tuần/tháng/quý/năm** bên dưới.
+
+Năm dòng:
+
+| Dòng | Nghĩa |
+|---|---|
+| Tiền còn | tổng số dư các ví — tiền thật đang nắm |
+| Gửi tiết kiệm | chỉ hiện khi có sổ; tiền của mình nhưng đã rời ví |
+| Người ta nợ mình | cho vay − thu nợ |
+| Mình đang nợ | đi vay − trả nợ |
+| Tiền mặt ròng | cộng hết lại, trừ phần phải trả |
+
+Bấm vào một dòng thì nhảy sang tab tương ứng (Ví, hoặc Nợ & TK) để xem chi tiết
+từng ví, từng người.
+
+**"Tiền mặt ròng" không phải tài sản ròng.** Sổ này không có chỗ ghi nhà, đất,
+xe. Vay 1,1 tỷ mua nhà thì dòng này âm hơn 1 tỷ — đúng về số nhưng sai về tình
+hình, vì căn nhà đối ứng không nằm ở đâu cả. Vì vậy dòng chú thích *"Chưa tính
+nhà, đất, xe và tài sản khác"* luôn đi liền ngay dưới, không được tách ra.
+
+Thêm danh mục chi **Mua tài sản**, trỏ vào lọ *Tiết kiệm*. Trước đó khoản
+mua nhà phải ghi vào "Khác", mà "Khác" rơi vào lọ *Thiết yếu* — một khoản 1,1 tỷ
+nằm trong lọ Thiết yếu làm mọi hạn mức chi tiêu hằng tháng thành vô nghĩa.
+
+Không đụng tới Apps Script, không thêm cột nào trên Sheet. Chỉ cần tải lại web.
+
 ## v11 — Ảnh hoá đơn, chụp được cả lúc mất mạng
 *Apps Script: **CÓ ĐỔI** — phải deploy lại (thêm cột "Ảnh" + quyền Drive)*
 
