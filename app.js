@@ -36,7 +36,22 @@ const store = {
   // IndexedDB. Để ở localStorage vì lúc vẽ danh sách cần biết NGAY khoản nào
   // có ảnh, mà IndexedDB thì phải chờ, không kịp cho một vòng vẽ.
   get anhCho()   { try { return JSON.parse(localStorage.getItem("ctcn_anh_cho") || "[]"); } catch { return []; } },
-  set anhCho(v)  { localStorage.setItem("ctcn_anh_cho", JSON.stringify(v)); }
+  get anhCho()   { try { return JSON.parse(localStorage.getItem("ctcn_anh_cho") || "[]"); } catch { return []; } },
+  set anhCho(v)  { localStorage.setItem("ctcn_anh_cho", JSON.stringify(v)); },
+
+  // Ba hàng chờ cho ba việc khác nhau, cố ý KHÔNG gộp chung:
+  //   queue    — khoản mới, chưa có trên Sheet
+  //   suaCho   — khoản đã có trên Sheet, đang chờ gửi bản sửa (giữ cả khoản)
+  //   xoaCho   — mã khoản chờ xoá khỏi Sheet
+  //   anhXoaCho— mã khoản chờ gỡ ảnh khỏi Sheet (gỡ ảnh, không xoá khoản)
+  // Gộp chung thành một danh sách lệnh thì phải tự lo thứ tự giữa "sửa" và
+  // "xoá" cùng một khoản; tách ra thì chỉ cần gửi đúng thứ tự ba vòng.
+  get suaCho()    { try { return JSON.parse(localStorage.getItem("ctcn_sua_cho") || "[]"); } catch { return []; } },
+  set suaCho(v)   { localStorage.setItem("ctcn_sua_cho", JSON.stringify(v)); },
+  get xoaCho()    { try { return JSON.parse(localStorage.getItem("ctcn_xoa_cho") || "[]"); } catch { return []; } },
+  set xoaCho(v)   { localStorage.setItem("ctcn_xoa_cho", JSON.stringify(v)); },
+  get anhXoaCho() { try { return JSON.parse(localStorage.getItem("ctcn_anh_xoa_cho") || "[]"); } catch { return []; } },
+  set anhXoaCho(v){ localStorage.setItem("ctcn_anh_xoa_cho", JSON.stringify(v)); }
 };
 
 let selectedKind = "Chi";                    // Chi hoặc Thu
@@ -458,7 +473,7 @@ function initNgay() {
 
 // ===== Gọi API =====
 // Tăng mỗi lần sửa app, hiển thị ở màn hình PIN để biết máy đang chạy bản nào.
-const APP_VERSION = "13";
+const APP_VERSION = "14";
 
 // ===== Nhật ký dò lỗi =====
 // Ghi vào localStorage nên còn nguyên kể cả khi trang tự nạp lại — đây là
@@ -502,6 +517,9 @@ async function callApiOnce(action, payload) {
     const err = new Error(data.error || "Lỗi không rõ");
     // Sai PIN là lỗi cố định: thử lại bao nhiêu lần cũng vẫn sai.
     if (String(data.error || "").includes("PIN")) err.pinError = true;
+    // Khoản đã bị xoá khỏi Sheet thì lệnh sửa này hỏng vĩnh viễn — thử lại
+    // nghìn lần cũng vẫn hỏng, phải bỏ ra khỏi hàng chờ chứ không giữ gửi mãi.
+    if (String(data.error || "").includes("Không tìm thấy")) err.khongTim = true;
     throw err;
   }
   return data;
@@ -696,6 +714,10 @@ function render() {
   const queue = store.queue;
   // Đọc một lần cho cả vòng vẽ, thay vì đọc lại localStorage ở từng dòng.
   const anhCho = store.anhCho;
+  // Khoản đã sửa trong máy nhưng bản sửa chưa lên Sheet cũng phải mang dấu ⏳.
+  // Không đánh dấu thì màn hình hiện số mới trong khi Sheet còn số cũ, mà
+  // nhìn vào không có cách nào biết.
+  const suaCho = store.suaCho.map(e => e.id);
   const all = tatCaKhoan();
 
   const inMonth = all.filter(e => String(e.date || "").startsWith(month));
@@ -760,7 +782,7 @@ function render() {
       const dauTien = thu ? "+" : (chuyen ? "⇄ " : (no ? (Logic.noLamTienRa(e) ? "↗ " : "↙ ") : ""));
       row.innerHTML = `
         <div class="item-main">
-          <div class="item-cat">${e.category || "Khác"}${e.unsent ? " ⏳" : ""}${Logic.coAnh(e, anhCho) ? " 📎" : ""}</div>
+          <div class="item-cat">${e.category || "Khác"}${(e.unsent || suaCho.indexOf(e.id) >= 0) ? " ⏳" : ""}${Logic.coAnh(e, anhCho) ? " 📎" : ""}</div>
           <div class="item-meta">${meta}</div>
         </div>
         <div class="item-amount${lopTien}">${dauTien}${formatMoney(e.amount)} đ</div>`;
@@ -2154,42 +2176,58 @@ async function luuSuaKhoan() {
     wallet: Logic.laChuyenVi(cu) ? cu.wallet : (($("edit-wallet") && $("edit-wallet").value) || "")
   };
 
-  const btn = $("edit-save");
-  btn.disabled = true;
-  btn.textContent = "Đang lưu…";
-  try {
-    await callApi("update", { entry: moi }, { retries: 2 });
-    const i = entries.findIndex(x => x.id === cu.id);
-    if (i >= 0) entries[i] = moi;
+  // Cập nhật trong máy trước, gửi lên Sheet ở nền — cùng lối với lúc ghi khoản
+  // mới. Hộp sửa chỉ mở cho khoản ĐÃ có trên Sheet (dòng còn ⏳ không bấm vào
+  // được), nên ở đây không có ca "sửa khoản đang bay lên mạng".
+  const i = entries.findIndex(x => x.id === cu.id);
+  if (i >= 0) entries[i] = moi;
 
-    // Ảnh xử lý RIÊNG, sau khi khoản đã lưu xong. Gộp vào một lần gọi thì ảnh
-    // hỏng sẽ kéo theo cả phần sửa số tiền trượt mất.
-    if (anhSuaXoa && !anhSuaMoi) {
-      btn.textContent = "Đang gỡ ảnh…";
-      await callApi("xoaAnh", { id: cu.id }, { retries: 1 });
-      await donAnhTrongMay(cu.id, cu.anh);
-      const j = entries.findIndex(x => x.id === cu.id);
-      if (j >= 0) entries[j] = { ...entries[j], anh: "" };
-    } else if (anhSuaMoi) {
-      btn.textContent = "Đang gửi ảnh…";
-      // Ảnh cũ do Apps Script tự bỏ vào thùng rác khi nhận ảnh mới; ở đây chỉ
-      // cần dọn bản sao trong máy, không thì cache vẫn trả ra ảnh cũ.
-      if (cu.anh) await dbThu(dbXoa(KHO_CACHE, cu.anh));
-      await ganAnhVaoKhoan(cu.id, anhSuaMoi);
+  // Ảnh xử lý RIÊNG. Gộp vào một lệnh thì ảnh hỏng sẽ kéo theo cả phần sửa
+  // số tiền trượt mất.
+  if (anhSuaXoa && !anhSuaMoi) {
+    themVaoCho("anhXoaCho", cu.id);
+    await donAnhTrongMay(cu.id, cu.anh);
+    const j = entries.findIndex(x => x.id === cu.id);
+    if (j >= 0) entries[j] = { ...entries[j], anh: "" };
+    moi.anh = "";
+  } else if (anhSuaMoi) {
+    // Ảnh cũ do Apps Script tự bỏ vào thùng rác khi nhận ảnh mới; ở đây chỉ
+    // cần dọn bản sao trong máy, không thì cache vẫn trả ra ảnh cũ.
+    if (cu.anh) await dbThu(dbXoa(KHO_CACHE, cu.anh));
+    try {
+      await catAnhChoCho(cu.id, anhSuaMoi);
+    } catch (err) {
+      showToast("Không cất được ảnh trong máy, phần sửa vẫn đã ghi");
     }
-
-    anhSuaMoi = null;
-    anhSuaXoa = false;
-    $("edit-sheet").hidden = true;
-    showToast("Đã cập nhật khoản này");
-    render();
-  } catch (err) {
-    loi.textContent = friendlyError(err);
-    loi.hidden = false;
-  } finally {
-    btn.disabled = false;
-    btn.textContent = "Lưu";
+    // Gỡ ảnh rồi lại chọn ảnh mới trong cùng một lần sửa: bỏ lệnh gỡ đi,
+    // không thì lệnh gỡ chạy sau sẽ xoá mất chính tấm vừa gửi lên.
+    boKhoiCho("anhXoaCho", cu.id);
   }
+
+  themSuaCho(moi);
+
+  anhSuaMoi = null;
+  anhSuaXoa = false;
+  $("edit-sheet").hidden = true;
+  showToast("Đã cập nhật khoản này");
+  render();
+
+  flushQueue({ im: true });
+}
+
+// Thêm/bớt một mã trong các hàng chờ chỉ chứa mã
+function themVaoCho(ten, id) {
+  const ds = store[ten];
+  if (ds.indexOf(id) < 0) store[ten] = [...ds, id];
+}
+function boKhoiCho(ten, id) {
+  store[ten] = store[ten].filter(x => x !== id);
+}
+
+// Hàng chờ sửa giữ CẢ khoản, và mỗi khoản chỉ nằm một lần: sửa đi sửa lại ba
+// lần thì chỉ bản cuối cần lên Sheet, gửi cả ba là tốn ba lượt gọi vô ích.
+function themSuaCho(entry) {
+  store.suaCho = [...store.suaCho.filter(e => e.id !== entry.id), entry];
 }
 
 async function xoaKhoanDangSua() {
@@ -2203,24 +2241,24 @@ async function xoaKhoanDangSua() {
   }
 
   if (!khoanDangSua) return;
-  const loi = $("edit-error");
-  btn.disabled = true;
-  btn.textContent = "Đang xoá…";
-  try {
-    await callApi("delete", { id: khoanDangSua.id }, { retries: 2 });
-    entries = entries.filter(x => x.id !== khoanDangSua.id);
-    // Apps Script đã bỏ ảnh vào thùng rác Drive; phần còn lại nằm trong máy.
-    await donAnhTrongMay(khoanDangSua.id, khoanDangSua.anh);
-    $("edit-sheet").hidden = true;
-    showToast("Đã xoá khoản này");
-    render();
-  } catch (err) {
-    loi.textContent = friendlyError(err);
-    loi.hidden = false;
-    datLaiNutXoa();
-  } finally {
-    btn.disabled = false;
-  }
+  const id = khoanDangSua.id;
+
+  // Xoá khỏi máy ngay, gửi lệnh xoá lên Sheet ở nền.
+  entries = entries.filter(x => x.id !== id);
+
+  // Khoản này đang chờ gửi bản sửa thì bỏ luôn lệnh sửa đi: sửa một dòng sắp
+  // bị xoá là vô nghĩa, mà còn chắc chắn hỏng vì lúc đó dòng không còn nữa.
+  store.suaCho = store.suaCho.filter(e => e.id !== id);
+  boKhoiCho("anhXoaCho", id);
+
+  themVaoCho("xoaCho", id);
+  await donAnhTrongMay(id, khoanDangSua.anh);
+
+  $("edit-sheet").hidden = true;
+  showToast("Đã xoá khoản này");
+  render();
+
+  flushQueue({ im: true });
 }
 
 function initEdit() {
@@ -2659,8 +2697,16 @@ async function flushQueue(options = {}) {
 async function guiHangCho({ im = false } = {}) {
   let daGuiXong = 0;
   let loiPin = false;
+  let matDong = 0;          // lệnh sửa trỏ vào dòng không còn trên Sheet
   const hong = new Set();   // id đã thử và hỏng trong lượt này, đừng thử lại ngay
 
+  // Thứ tự ba việc là có chủ ý, không đổi được:
+  //   1. THÊM  — phải xong trước, vì sửa và xoá đều cần dòng đã có trên Sheet
+  //   2. SỬA   — trước khi xoá, dù lúc xoá đã bỏ lệnh sửa của chính khoản đó
+  //   3. XOÁ   — cuối cùng
+  // Riêng gỡ ảnh đi kèm vòng sửa vì cùng là "đổi một dòng đang có".
+
+  // ----- 1. Khoản mới -----
   // Vòng lặp đọc lại store.queue ở MỖI bước, cố ý không chụp hàng chờ một lần
   // từ đầu rồi gán đè `store.queue = remain` ở cuối.
   //
@@ -2683,16 +2729,74 @@ async function guiHangCho({ im = false } = {}) {
     }
   }
 
-  const conKet = store.queue.length;
+  // ----- 2. Bản sửa -----
+  while (true) {
+    // Bỏ qua khoản đã nằm trong hàng chờ xoá: gửi bản sửa cho một dòng sắp bị
+    // xoá là tốn một lượt gọi 2,5 giây để ghi vào chỗ sắp biến mất.
+    const tiep = store.suaCho.find(
+      e => !hong.has("sua:" + e.id) && store.xoaCho.indexOf(e.id) < 0
+    );
+    if (!tiep) break;
+    try {
+      await callApi("update", { entry: tiep });
+      store.suaCho = store.suaCho.filter(e => e.id !== tiep.id);
+      daGuiXong++;
+    } catch (err) {
+      if (err && err.pinError) loiPin = true;
+      if (err && err.khongTim) {
+        // Dòng không còn trên Sheet — ai đó đã xoá ở máy khác. Giữ lại lệnh
+        // sửa thì nó hỏng mãi mãi, nên bỏ đi và báo cho anh biết.
+        store.suaCho = store.suaCho.filter(e => e.id !== tiep.id);
+        entries = entries.filter(e => e.id !== tiep.id);
+        matDong++;
+      } else {
+        hong.add("sua:" + tiep.id);
+      }
+    }
+  }
+
+  // ----- 2b. Gỡ ảnh khỏi khoản (khoản vẫn còn) -----
+  while (true) {
+    const id = store.anhXoaCho.find(x => !hong.has("anhxoa:" + x));
+    if (!id) break;
+    try {
+      await callApi("xoaAnh", { id });
+      boKhoiCho("anhXoaCho", id);
+    } catch (err) {
+      if (err && err.pinError) loiPin = true;
+      hong.add("anhxoa:" + id);
+    }
+  }
+
+  // ----- 3. Xoá khoản -----
+  // Apps Script trả ok kể cả khi dòng đã biến mất (daXoaTruocDo), nên lệnh xoá
+  // gửi lại nhiều lần không sao.
+  while (true) {
+    const id = store.xoaCho.find(x => !hong.has("xoa:" + x));
+    if (!id) break;
+    try {
+      await callApi("delete", { id });
+      boKhoiCho("xoaCho", id);
+      daGuiXong++;
+    } catch (err) {
+      if (err && err.pinError) loiPin = true;
+      hong.add("xoa:" + id);
+    }
+  }
+
+  const conKet = store.queue.length + store.suaCho.length
+               + store.xoaCho.length + store.anhXoaCho.length;
 
   if (loiPin) {
-    // Nuốt lỗi PIN ở đây là tình huống nguy hiểm nhất của cách lưu nền: khoản
+    // Nuốt lỗi PIN ở đây là tình huống nguy hiểm nhất của cách lưu nền: việc
     // nằm mãi trong hàng chờ mà anh đã thấy chữ "Đã ghi" nên tưởng xong rồi.
-    showToast("PIN đã đổi, khoản chưa lên Sheet — anh mở lại sổ nhé");
+    showToast("PIN đã đổi, chưa gửi được lên Sheet — anh mở lại sổ nhé");
+  } else if (matDong) {
+    showToast(`${matDong} khoản đã bị xoá ở nơi khác, không sửa được nữa`);
   } else if (conKet) {
-    showToast(`${conKet} khoản chưa gửi được, sẽ tự gửi lại`);
+    showToast(`${conKet} việc chưa gửi được, sẽ tự gửi lại`);
   } else if (daGuiXong && !im) {
-    showToast(`Đã gửi ${daGuiXong} khoản còn kẹt`);
+    showToast(`Đã gửi ${daGuiXong} việc còn kẹt`);
   }
 
   // Ảnh gửi sau khoản: ảnh chỉ gắn được vào khoản đã nằm trên Sheet. Đảo thứ

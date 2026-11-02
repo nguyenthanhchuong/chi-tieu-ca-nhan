@@ -21,6 +21,54 @@ Nếu đã cài app ra màn hình chính thì bấm **Tải lại bản mới** 
 
 ---
 
+## v14 — Sửa và xoá cũng xong ngay
+
+Nối tiếp bản trước. Giờ cả ba việc đều ghi vào máy trước rồi gửi lên Sheet ở
+nền:
+
+| Việc | Trước | Nay |
+|---|---|---|
+| Ghi khoản mới | 2,5–5 s | 0,012 s |
+| Sửa khoản | 2,5–5 s | 0,009 s |
+| Xoá khoản | 2,5–5 s | 0,012 s |
+
+Khoản đã sửa trong máy mà bản sửa chưa lên Sheet cũng mang dấu **⏳**, giống
+khoản mới. Không đánh dấu thì màn hình hiện số mới trong khi Sheet còn số cũ,
+mà nhìn vào không có cách nào biết.
+
+### Bốn hàng chờ, cố ý không gộp chung
+
+| Hàng chờ | Chứa gì |
+|---|---|
+| `queue` | khoản mới, chưa có trên Sheet |
+| `suaCho` | khoản đã có trên Sheet, chờ gửi bản sửa |
+| `xoaCho` | mã khoản chờ xoá khỏi Sheet |
+| `anhXoaCho` | mã khoản chờ gỡ ảnh (gỡ ảnh, không xoá khoản) |
+
+Gửi theo đúng thứ tự **thêm → sửa → xoá**: sửa và xoá đều cần dòng đã có trên
+Sheet, nên thêm phải xong trước.
+
+### Các ca đã thử
+
+| Ca | Kết quả |
+|---|---|
+| Sửa đi sửa lại nhiều lần | chỉ bản cuối lên Sheet, không gửi từng bản |
+| Sửa rồi xoá cùng khoản | lệnh sửa bị bỏ, chỉ gửi lệnh xoá |
+| Mất mạng rồi có lại | ba việc giữ nguyên, gửi đúng thứ tự add → update → delete |
+| Khoản bị xoá ở máy khác | bỏ lệnh sửa, báo "đã bị xoá ở nơi khác", **không** thử lại vô hạn |
+| Gỡ ảnh rồi chọn ảnh mới trong cùng lần sửa | lệnh gỡ bị bỏ, không xoá mất tấm vừa gửi |
+| Sai PIN | việc giữ lại trong hàng chờ, báo ra màn hình |
+
+Lệnh xoá gửi lại nhiều lần không sao: Apps Script trả `ok` kèm `daXoaTruocDo`
+khi dòng đã biến mất. Lệnh **sửa** thì khác — dòng không còn là hỏng vĩnh viễn,
+nên bản sửa đó bị bỏ khỏi hàng chờ thay vì gửi mãi.
+
+**Vẫn giữ nguyên:** hộp sửa chỉ mở cho khoản đã lên Sheet (dòng còn ⏳ chưa bấm
+vào được). Nhờ vậy không có ca "sửa khoản đang bay lên mạng", đổi lại phải chờ
+vài giây mới sửa được khoản vừa ghi.
+
+Không đổi Apps Script, không thêm cột nào trên Sheet.
+
 ## v13 — Lưu xong ngay, không phải ngồi chờ mạng
 
 Trước đây bấm **Lưu** là phải chờ **2,5–5 giây** nhìn chữ "Đang lưu…". Đo thật
