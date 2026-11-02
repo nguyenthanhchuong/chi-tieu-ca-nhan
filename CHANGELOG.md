@@ -21,6 +21,55 @@ Nếu đã cài app ra màn hình chính thì bấm **Tải lại bản mới** 
 
 ---
 
+## v13 — Lưu xong ngay, không phải ngồi chờ mạng
+
+Trước đây bấm **Lưu** là phải chờ **2,5–5 giây** nhìn chữ "Đang lưu…". Đo thật
+trên máy chủ Apps Script:
+
+| Lần gọi | Thời gian |
+|---|---|
+| 1 (nguội) | 5,43 s |
+| 2 | 2,71 s |
+| 3 | 2,53 s |
+| 4 | 2,91 s |
+
+Trong đó nối mạng và mã hoá chỉ tốn 0,25 s; phần còn lại là Google khởi động
+container Apps Script rồi chuyển hướng sang `script.googleusercontent.com`.
+**Không sửa được từ phía app.**
+
+Nay đảo thứ tự: khoản được ghi vào máy trước, màn hình trả lại ngay, việc gửi
+lên Sheet chạy ở nền. Đo lại: **0,012 giây** — nhanh hơn khoảng 250 lần.
+
+Đây chính là đường đi cũ khi mất mạng, nay thành đường đi duy nhất. Lúc có mạng
+và lúc mất mạng dùng chung một mã, nên chỉ còn một nhánh cần thử kỹ thay vì hai.
+
+**Thay đổi anh sẽ thấy:** khoản vừa ghi hiện ngay kèm dấu ⏳ và nền khác màu,
+chưa sửa/xoá được cho tới khi lên Sheet xong (vài giây). Trước đây anh cũng
+không làm gì được trong chừng đó thời gian, chỉ khác là phải ngồi nhìn.
+
+Ảnh hoá đơn cũng không còn chặn: cất vào máy trước, gửi Drive ở nền.
+
+### Lỗi mất dữ liệu đã tìm ra và sửa trong cùng bản này
+
+Bản nháp đầu tiên chụp hàng chờ một lần rồi gán đè `store.queue = remain` ở
+cuối. Thử ghi nhanh ba khoản liền tay: **chỉ khoản đầu lên Sheet, hai khoản sau
+biến mất không dấu vết** — vì chúng được thêm vào hàng chờ trong lúc khoản đầu
+còn đang bay lên mạng, nên không có trong bản chụp và bị câu gán đè xoá sạch.
+
+Đã sửa: vòng gửi đọc lại hàng chờ ở mỗi bước thay vì dùng bản chụp. Thêm chốt
+chặn hai lượt gửi chạy chồng lên nhau. Đã thử lại: 3 khoản → 3 lượt gửi, không
+trùng, không mất.
+
+Lỗi PIN khi gửi nền cũng được báo ra màn hình. Trước đó nó bị nuốt im lặng —
+nguy hiểm nhất của cách lưu nền, vì anh đã thấy chữ "Đã ghi" nên tưởng xong rồi
+trong khi khoản nằm mãi trong hàng chờ.
+
+**Chưa đụng tới:** sửa và xoá khoản vẫn chờ mạng như cũ (2,5–5 giây). Hàng chờ
+hiện chỉ xử lý việc thêm mới; muốn sửa/xoá cũng chạy nền thì phải làm thêm hàng
+chờ riêng cho hai việc đó.
+
+Không đổi Apps Script, không thêm cột nào trên Sheet.
+
 ## v12 — Tình hình hiện tại ở đầu tab Thống kê
 
 Thêm khối **Tình hình hiện tại** lên trên cùng tab Thống kê. Khác với phần còn
