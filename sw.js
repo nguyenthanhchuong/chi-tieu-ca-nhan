@@ -6,13 +6,13 @@
 // vĩnh viễn chạy bản cũ, mọi bản sửa đẩy lên đều không tới được người dùng.
 // App này luôn cần mạng để lấy dữ liệu từ Google, nên ưu tiên mạng không làm
 // mất gì, mà lại bảo đảm người dùng luôn chạy bản mới nhất.
-const CACHE_VERSION = "ctcn-v14";
+const CACHE_VERSION = "ctcn-v15";
 const SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=14",
-  "./logic.js?v=14",
-  "./app.js?v=14",
+  "./style.css?v=15",
+  "./logic.js?v=15",
+  "./app.js?v=15",
   "./manifest.json"
 ];
 
