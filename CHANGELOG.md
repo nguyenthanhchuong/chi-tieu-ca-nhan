@@ -21,6 +21,42 @@ Nếu đã cài app ra màn hình chính thì bấm **Tải lại bản mới** 
 
 ---
 
+## v15 — Số dư đầu ví nhận số âm (thẻ tín dụng)
+
+Thẻ tín dụng không chứa tiền của mình, nó chứa **khoản mình nợ ngân hàng**, nên
+số dư đầu của nó phải là số âm.
+
+**Lỗi đã sửa:** ô "Số dư đầu" dùng chung `parseAmount`, mà hàm này xoá sạch ký
+tự không phải chữ số. Gõ `-5.000.000` sẽ lưu thành `+5.000.000` — sai ngược hẳn,
+và **không có cảnh báo nào**. Người dùng chỉ biết khi nhìn số dư ví sai gấp đôi
+khoản nợ.
+
+Nay tách riêng `parseAmountCoAm`, chỉ dùng cho đúng ô này. `parseAmount` giữ
+nguyên cho số tiền khoản thu/chi: một khoản chi âm là vô nghĩa và sẽ làm hỏng
+mọi phép cộng trong sổ.
+
+Nhận cả bốn kiểu gạch ngang `-` `−` `–` `—` vì bàn phím điện thoại và chính app
+cho ra ký tự khác nhau (app hiện số âm bằng `−`, iOS hay tự đổi `-` thành `–`).
+Dấu trừ ở giữa chuỗi thì bỏ qua: `5.000-000` là gõ nhầm, không phải ý định ghi
+số âm.
+
+Ô nhập cũng giữ lại dấu trừ khi chưa gõ chữ số nào — trước đó định dạng lại
+ngay mỗi lần gõ nên vừa bấm `-` là ô tự trống, không bao giờ gõ được số âm.
+
+### Cách ghi thẻ tín dụng cho đúng
+
+| Việc | Ghi thế nào |
+|---|---|
+| Khai số đang nợ thẻ | Cài đặt ví → số dư đầu là số **âm** |
+| Quẹt thẻ mua hàng | khoản **Chi** bình thường, chọn ví là thẻ |
+| Trả nợ thẻ theo sao kê | **Chuyển ví** từ ngân hàng → thẻ |
+
+Trả nợ thẻ **không phải** khoản Chi. Lúc quẹt thẻ đã ghi khoản chi rồi; ghi
+thêm lần nữa là đếm hai lần, tháng đó báo chi gấp đôi thực tế. Có ca test canh
+đúng điểm này.
+
+Số dư thẻ về 0 nghĩa là không còn nợ.
+
 ## v14 — Sửa và xoá cũng xong ngay
 
 Nối tiếp bản trước. Giờ cả ba việc đều ghi vào máy trước rồi gửi lên Sheet ở

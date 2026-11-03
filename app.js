@@ -473,7 +473,7 @@ function initNgay() {
 
 // ===== Gọi API =====
 // Tăng mỗi lần sửa app, hiển thị ở màn hình PIN để biết máy đang chạy bản nào.
-const APP_VERSION = "14";
+const APP_VERSION = "15";
 
 // ===== Nhật ký dò lỗi =====
 // Ghi vào localStorage nên còn nguyên kể cả khi trang tự nạp lại — đây là
@@ -961,8 +961,11 @@ function veDongCaiDatVi(ds) {
 
   box.querySelectorAll(".vi-dau").forEach(o => {
     o.addEventListener("input", () => {
-      const n = parseAmount(o.value);
-      o.value = n ? formatMoney(n) : "";
+      const am = Logic.coDauAm(o.value);
+      const n = Logic.parseAmountCoAm(o.value);
+      // Giữ lại dấu trừ khi chưa gõ chữ số nào. Nếu xoá luôn thì không bao giờ
+      // gõ được số âm: vừa bấm "-" là ô tự trống lại.
+      o.value = n ? formatMoney(n) : (am ? "-" : "");
     });
   });
   box.querySelectorAll(".vi-xoa").forEach(b => {
@@ -977,8 +980,9 @@ async function luuCaiDatVi() {
     const ten = d.querySelector(".vi-ten").value.trim();
     if (!ten || ds.includes(ten)) return;
     ds.push(ten);
-    const n = parseAmount(d.querySelector(".vi-dau").value);
-    if (n > 0) soDuDau[ten] = n;
+    // Nhận cả số âm: thẻ tín dụng đang nợ thì số dư đầu là số âm.
+    const n = Logic.parseAmountCoAm(d.querySelector(".vi-dau").value);
+    if (n) soDuDau[ten] = n;
   });
 
   if (!ds.length) {

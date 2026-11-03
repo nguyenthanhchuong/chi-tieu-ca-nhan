@@ -12,6 +12,28 @@ const Logic = (function () {
     return digits ? parseInt(digits, 10) : 0;
   }
 
+  // Giống parseAmount nhưng GIỮ dấu âm.
+  //
+  // CHỈ dùng cho số dư đầu ví. Thẻ tín dụng đang nợ thì số dư đầu là số ÂM:
+  // thẻ không chứa tiền của mình, nó chứa khoản mình nợ ngân hàng. Trước đây ô
+  // này dùng parseAmount, mà parseAmount xoá sạch ký tự không phải chữ số, nên
+  // gõ "−5.000.000" lại lưu thành "+5.000.000" — sai ngược hẳn mà không báo gì.
+  //
+  // TUYỆT ĐỐI không dùng cho số tiền của khoản thu/chi: một khoản chi âm là vô
+  // nghĩa và sẽ làm hỏng mọi phép cộng trong sổ.
+  //
+  // Nhận cả bốn kiểu gạch ngang vì bàn phím điện thoại và chính app cho ra
+  // những ký tự khác nhau: "-" (ASCII), "−" (dấu trừ thật, app dùng khi hiện
+  // số âm), "–" và "—" (gạch nối dài, bàn phím iOS hay tự đổi thành).
+  function coDauAm(text) {
+    return /^\s*[-−–—]/.test(String(text == null ? "" : text));
+  }
+
+  function parseAmountCoAm(text) {
+    const n = parseAmount(text);
+    return coDauAm(text) ? -n : n;
+  }
+
   function ngayKey(d) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   }
@@ -965,7 +987,7 @@ const Logic = (function () {
 
   return {
     kichThuocMoi, coAnh,
-    formatMoney, formatNgan, parseAmount, ngayKey, thangKey,
+    formatMoney, formatNgan, parseAmount, parseAmountCoAm, coDauAm, ngayKey, thangKey,
     chuoiThang, dienBienTheoThang, dienBienMuc,
     laKhoanThu, laChuyenLo, laChuyenVi, laKhoanChi,
     LOAI_NO, laKhoanNo, noLamTienRa, soDuNo, tomTatNo,

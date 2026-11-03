@@ -1253,6 +1253,85 @@ test("danh mục Mua tài sản vào lọ Tiết kiệm, không phá lọ Thiế
   bang(Logic.doanLo("Khác"), "NEC");
 });
 
+nhom("Số dư đầu ví âm (thẻ tín dụng)");
+
+test("đọc được số âm với cả bốn kiểu gạch ngang", () => {
+  // Bàn phím điện thoại và chính app cho ra ký tự khác nhau: app hiện "−"
+  // (dấu trừ thật), bàn phím iOS hay tự đổi "-" thành "–".
+  bang(Logic.parseAmountCoAm("-5.000.000"), -5000000);
+  bang(Logic.parseAmountCoAm("−5.000.000"), -5000000);
+  bang(Logic.parseAmountCoAm("–5.000.000"), -5000000);
+  bang(Logic.parseAmountCoAm("—5.000.000"), -5000000);
+});
+
+test("số dương vẫn đọc như cũ", () => {
+  bang(Logic.parseAmountCoAm("45.834.000"), 45834000);
+  bang(Logic.parseAmountCoAm("45834000"), 45834000);
+});
+
+test("dấu trừ ở GIỮA không biến số thành âm", () => {
+  // "5.000-000" là gõ nhầm, không phải ý định ghi số âm
+  bang(Logic.parseAmountCoAm("5.000-000"), 5000000);
+});
+
+test("khoảng trắng trước dấu trừ vẫn tính là âm", () => {
+  bang(Logic.parseAmountCoAm("  -200000"), -200000);
+});
+
+test("chuỗi rỗng và rác ra 0, không ra NaN", () => {
+  bang(Logic.parseAmountCoAm(""), 0);
+  bang(Logic.parseAmountCoAm("abc"), 0);
+  bang(Logic.parseAmountCoAm(null), 0);
+  // Chỉ mỗi dấu trừ: chưa gõ số nào, phải ra 0 chứ không phải -0 hay NaN
+  bang(Logic.parseAmountCoAm("-"), 0);
+});
+
+test("parseAmount cũ KHÔNG đổi: khoản chi âm là vô nghĩa", () => {
+  // Đây là lý do phải tách làm hai hàm. Nếu ô số tiền khoản chi nhận số âm
+  // thì mọi phép cộng trong sổ hỏng theo.
+  bang(Logic.parseAmount("-5.000.000"), 5000000);
+});
+
+test("thẻ tín dụng đang nợ làm giảm tiền còn", () => {
+  const khoan = [
+    { id: "1", date: "2026-11-01", type: "Thu", amount: 50000000, category: "Lương", wallet: "Ngân hàng" }
+  ];
+  const t = Logic.tinhHinhHienTai(
+    khoan,
+    { ds: ["Ngân hàng", "Thẻ tín dụng"], soDuDau: { "Thẻ tín dụng": -5000000 } },
+    []
+  );
+  bang(t.vi["Thẻ tín dụng"].con, -5000000);
+  bang(t.tienCon, 45000000);
+});
+
+test("quẹt thẻ làm số dư thẻ âm thêm", () => {
+  const khoan = [
+    { id: "1", date: "2026-11-02", type: "Chi", amount: 1200000, category: "Ăn uống", wallet: "Thẻ tín dụng" }
+  ];
+  const t = Logic.tinhHinhHienTai(
+    khoan, { ds: ["Thẻ tín dụng"], soDuDau: { "Thẻ tín dụng": -5000000 } }, []
+  );
+  bang(t.vi["Thẻ tín dụng"].con, -6200000);
+});
+
+test("trả nợ thẻ bằng Chuyển ví đưa số dư thẻ về 0, không tính là chi", () => {
+  // Đây là chỗ dễ sai nhất: ghi khoản trả thẻ thành "Chi" là đếm hai lần,
+  // vì lúc quẹt thẻ đã ghi khoản chi rồi.
+  const khoan = [
+    { id: "1", date: "2026-11-02", type: "Chi", amount: 1200000, category: "Ăn uống", wallet: "Thẻ tín dụng" },
+    { id: "2", date: "2026-11-05", type: "Chuyển ví", amount: 6200000, category: "Chuyển ví",
+      wallet: "Ngân hàng", walletTo: "Thẻ tín dụng" }
+  ];
+  const caiDat = { ds: ["Ngân hàng", "Thẻ tín dụng"], soDuDau: { "Ngân hàng": 50000000, "Thẻ tín dụng": -5000000 } };
+  const t = Logic.tinhHinhHienTai(khoan, caiDat, []);
+  bang(t.vi["Thẻ tín dụng"].con, 0);
+  bang(t.vi["Ngân hàng"].con, 43800000);
+  // Tổng chi chỉ gồm 1,2 triệu đã quẹt, KHÔNG gồm 6,2 triệu trả thẻ
+  const kq = Logic.tongHopKy(khoan, "2026-11-01", "2026-11-30", ["Chương"]);
+  bang(kq.tongChi, 1200000);
+});
+
 (function veKetQua() {
   const dat = ketQua.filter(k => k.dat).length;
   const hong = ketQua.length - dat;
