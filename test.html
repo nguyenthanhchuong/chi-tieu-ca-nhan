@@ -1332,6 +1332,89 @@ test("trả nợ thẻ bằng Chuyển ví đưa số dư thẻ về 0, không t
   bang(kq.tongChi, 1200000);
 });
 
+nhom("Sắp xếp danh sách giao dịch");
+
+test("bóc được mốc thời gian từ cả bốn dạng mã khoản", () => {
+  bang(Logic.lucNhap({ id: "1793632992517-2574" }), 1793632992517);
+  bang(Logic.lucNhap({ id: "cv-1793632992517" }), 1793632992517);
+  bang(Logic.lucNhap({ id: "mv-1793632992517" }), 1793632992517);
+  bang(Logic.lucNhap({ id: "no-1793632992517" }), 1793632992517);
+});
+
+test("mã lạ trả 0 chứ không ra NaN", () => {
+  // NaN lọt vào phép trừ của sort là thứ tự ra lung tung không đoán được
+  bang(Logic.lucNhap({ id: "abc" }), 0);
+  bang(Logic.lucNhap({ id: "" }), 0);
+  bang(Logic.lucNhap({}), 0);
+  bang(Logic.lucNhap(null), 0);
+});
+
+test("không vớ nhầm mẩu số ngắn trong tiền tố", () => {
+  // "cv2-" có số 2 nhưng đó không phải mốc thời gian
+  bang(Logic.lucNhap({ id: "cv2-1793632992517" }), 1793632992517);
+});
+
+// Ba khoản: ghi ngày 08/11 nhưng gán ngày giao dịch lùi về trước.
+// Đây đúng tình huống ghi bù, hai cách sắp xếp cho ra hai thứ tự khác hẳn.
+function soMauSapXep() {
+  return [
+    { id: "1000000000001-1", date: "2026-11-05", note: "nhập trước, ngày giữa" },
+    { id: "1000000000002-2", date: "2026-11-01", note: "nhập giữa, ngày cũ nhất" },
+    { id: "cv-1000000000003", date: "2026-11-08", note: "nhập sau, ngày mới nhất" }
+  ];
+}
+
+test("Mới nhập: khoản bấm Lưu sau nằm trên", () => {
+  const ds = Logic.sapXepKhoan(soMauSapXep(), "nhap");
+  bang(ds.map(e => e.note), [
+    "nhập sau, ngày mới nhất",
+    "nhập giữa, ngày cũ nhất",
+    "nhập trước, ngày giữa"
+  ]);
+});
+
+test("Ngày giao dịch: xếp theo ngày anh chọn, không theo lúc nhập", () => {
+  const ds = Logic.sapXepKhoan(soMauSapXep(), "ngay");
+  bang(ds.map(e => e.date), ["2026-11-08", "2026-11-05", "2026-11-01"]);
+});
+
+test("cùng ngày giao dịch thì khoản nhập sau nằm trên", () => {
+  const ds = Logic.sapXepKhoan([
+    { id: "1000000000001-1", date: "2026-11-08", note: "ghi trước" },
+    { id: "1000000000009-9", date: "2026-11-08", note: "ghi sau" }
+  ], "ngay");
+  bang(ds.map(e => e.note), ["ghi sau", "ghi trước"]);
+});
+
+test("không sửa mảng gốc", () => {
+  // render() gọi hàm này mỗi vòng vẽ; xáo thẳng mảng entries thì thứ tự thật
+  // của sổ bị đổi vĩnh viễn mà không ai cố ý làm thế.
+  const goc = soMauSapXep();
+  const truoc = goc.map(e => e.id);
+  Logic.sapXepKhoan(goc, "ngay");
+  bang(goc.map(e => e.id), truoc);
+});
+
+test("danh sách rỗng và null không làm vỡ", () => {
+  bang(Logic.sapXepKhoan([], "ngay").length, 0);
+  bang(Logic.sapXepKhoan(null, "nhap").length, 0);
+});
+
+test("kiểu lạ thì xếp như Mới nhập, không trả về thứ tự ngẫu nhiên", () => {
+  const ds = Logic.sapXepKhoan(soMauSapXep(), "linh-tinh");
+  bang(ds[0].note, "nhập sau, ngày mới nhất");
+});
+
+test("khoản thiếu ngày không đẩy khoản khác sai chỗ", () => {
+  const ds = Logic.sapXepKhoan([
+    { id: "1000000000001-1", date: "2026-11-08" },
+    { id: "1000000000002-2" },
+    { id: "1000000000003-3", date: "2026-11-02" }
+  ], "ngay");
+  // Khoản không có ngày xuống cuối, hai khoản còn lại giữ đúng thứ tự ngày
+  bang(ds.map(e => e.date || ""), ["2026-11-08", "2026-11-02", ""]);
+});
+
 (function veKetQua() {
   const dat = ketQua.filter(k => k.dat).length;
   const hong = ketQua.length - dat;

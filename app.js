@@ -63,6 +63,10 @@ let entries = [];
 let statMode = "thang";   // tuan | thang | quy | nam
 let statOffset = 0;       // 0 = kỳ hiện tại, -1 = kỳ trước
 
+// Kiểu sắp xếp danh sách giao dịch. Nhớ lại giữa các lần mở app, vì đây là
+// thói quen xem sổ chứ không phải lựa chọn nhất thời.
+let kieuSap = localStorage.getItem("ctcn_sap") || "nhap";
+
 function danhMucHienTai() {
   return selectedKind === "Thu" ? CATEGORIES_THU : CATEGORIES_CHI;
 }
@@ -473,7 +477,7 @@ function initNgay() {
 
 // ===== Gọi API =====
 // Tăng mỗi lần sửa app, hiển thị ở màn hình PIN để biết máy đang chạy bản nào.
-const APP_VERSION = "15";
+const APP_VERSION = "16";
 
 // ===== Nhật ký dò lỗi =====
 // Ghi vào localStorage nên còn nguyên kể cả khi trang tự nạp lại — đây là
@@ -747,7 +751,11 @@ function render() {
   // Danh sách gần đây — hoặc kết quả tìm kiếm nếu đang lọc
   const list = $("recent-list");
   const dangLoc = coDieuKienLoc();
-  const ketQua = dangLoc ? Logic.locKhoan(all, docDieuKienLoc()) : all;
+  // Sắp xếp áp cho cả danh sách gần đây lẫn kết quả tìm — tìm xong mà thứ tự
+  // nhảy về kiểu khác thì anh phải dò lại từ đầu.
+  const ketQua = Logic.sapXepKhoan(
+    dangLoc ? Logic.locKhoan(all, docDieuKienLoc()) : all, kieuSap
+  );
   const recent = dangLoc ? ketQua.slice(0, 200) : ketQua.slice(0, 25);
 
   $("recent-title").textContent = dangLoc ? "Kết quả tìm" : "Gần đây";
@@ -1559,6 +1567,23 @@ function capNhatKetQuaLoc(ketQua, soHien) {
   o.textContent = phan.join(" · ");
 }
 
+function renderChipSapXep() {
+  const box = $("sap-xep");
+  if (!box) return;
+  box.innerHTML = Logic.KIEU_SAP.map(k =>
+    `<button type="button" class="chip${k.key === kieuSap ? " on" : ""}" data-sap="${k.key}">${k.ten}</button>`
+  ).join("");
+  box.querySelectorAll(".chip").forEach(b => {
+    b.addEventListener("click", () => {
+      if (kieuSap === b.dataset.sap) return;
+      kieuSap = b.dataset.sap;
+      localStorage.setItem("ctcn_sap", kieuSap);
+      renderChipSapXep();
+      render();
+    });
+  });
+}
+
 function renderChipLoc() {
   const box = $("tim-loai");
   if (!box) return;
@@ -1588,6 +1613,7 @@ function initTim() {
   const box = $("tim-box");
   if (!nut || !box) return;
   renderChipLoc();
+  renderChipSapXep();
 
   nut.addEventListener("click", () => {
     box.hidden = !box.hidden;

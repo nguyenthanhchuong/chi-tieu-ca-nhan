@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Chi Tiêu Cá Nhân">
-<link rel="stylesheet" href="style.css?v=15">
+<link rel="stylesheet" href="style.css?v=16">
 </head>
 <body>
 
@@ -124,6 +124,10 @@
         <span class="pending" id="pending-badge" hidden></span>
         <button type="button" class="link-btn" id="btn-tim">Tìm khoản</button>
       </div>
+
+      <!-- Chọn kiểu sắp xếp. "Mới nhập" là thứ tự bấm Lưu, "Ngày giao dịch" là
+           ngày anh chọn cho khoản đó — hai mốc này lệch nhau khi ghi bù. -->
+      <div class="chips sap-xep" id="sap-xep"></div>
 
       <!-- Bảng tìm kiếm, mặc định ẩn -->
       <div class="tim-box" id="tim-box" hidden>
@@ -524,7 +528,7 @@
   <div class="toast" id="toast" hidden></div>
 </div>
 
-<script src="logic.js?v=15"></script>
-<script src="app.js?v=15"></script>
+<script src="logic.js?v=16"></script>
+<script src="app.js?v=16"></script>
 </body>
 </html>

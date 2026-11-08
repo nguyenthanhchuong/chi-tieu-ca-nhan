@@ -953,6 +953,49 @@ const Logic = (function () {
     return { thu, chi, chuyen, no, soKhoan: (danhSach || []).length };
   }
 
+  // ===== Sắp xếp danh sách giao dịch =====
+  //
+  // Hai mốc thời gian khác nhau, rất dễ lẫn:
+  //   date    — NGÀY GIAO DỊCH, do người dùng chọn, mặc định hôm nay
+  //   lúc nhập— LÚC BẤM LƯU, lấy từ chính mã khoản
+  // Ghi hôm nay một bữa ăn của tuần trước thì hai mốc này lệch nhau cả tuần.
+
+  // Mã khoản có bốn dạng, đều nhúng mốc thời gian mili giây:
+  //   "1793632992517-2574"  khoản thu/chi
+  //   "cv-1793632992517"    chuyển ví
+  //   "mv-1793632992517"    chuyển lọ
+  //   "no-1793632992517"    khoản vay nợ
+  // Nhờ vậy biết được lúc nhập mà KHÔNG phải đọc thêm cột "Thời điểm ghi"
+  // trên Sheet — đọc cột đó sẽ phải sửa Apps Script rồi deploy lại.
+  //
+  // Lấy cụm chữ số từ 10 ký tự trở lên để không vớ nhầm mẩu số ngắn trong
+  // tiền tố. Mã lạ không có cụm nào thì trả 0, và nhờ sort của JS ổn định,
+  // những khoản đó giữ nguyên thứ tự cũ thay vì xáo lung tung.
+  function lucNhap(e) {
+    const m = String((e && e.id) || "").match(/\d{10,}/);
+    return m ? Number(m[0]) : 0;
+  }
+
+  const KIEU_SAP = [
+    { key: "nhap", ten: "Mới nhập" },
+    { key: "ngay", ten: "Ngày giao dịch" }
+  ];
+
+  function sapXepKhoan(danhSach, kieu) {
+    const ds = (danhSach || []).slice();
+    if (kieu === "ngay") {
+      // Cùng một ngày giao dịch thì khoản nhập sau nằm trên, để thứ tự trong
+      // ngày vẫn là thứ tự mình ghi.
+      ds.sort((a, b) =>
+        String(b.date || "").localeCompare(String(a.date || "")) ||
+        (lucNhap(b) - lucNhap(a))
+      );
+    } else {
+      ds.sort((a, b) => lucNhap(b) - lucNhap(a));
+    }
+    return ds;
+  }
+
   // ===== Ảnh hoá đơn =====
 
   // Khổ ảnh sau khi thu nhỏ, giữ nguyên tỉ lệ.
@@ -996,7 +1039,7 @@ const Logic = (function () {
     VI_MAC_DINH, danhSachVi, soDuCacVi, kiemTraChuyenVi,
     NGUONG_SAP_VUOT, daChiTheoMuc, daChiTheoLo, loCuaKhoan,
     chuanHoaHanMuc, trangThaiHanMuc, tomTatHanMuc,
-    boDau, locKhoan, tongKetLoc,
+    boDau, locKhoan, tongKetLoc, lucNhap, KIEU_SAP, sapXepKhoan,
     khoaNoiDung, goiYNoiDung, gomTheoNoiDung,
     khoangKy, nhanKy, trongKhoang, tongHopKy, friendlyError,
     // Bốn chiếc lọ

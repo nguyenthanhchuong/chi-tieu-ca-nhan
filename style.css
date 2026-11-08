@@ -743,6 +743,11 @@ body {
 /* Nút tìm đẩy sang phải, tách khỏi tiêu đề */
 .recent-head #btn-tim { margin-left: auto; }
 
+/* Chọn kiểu sắp xếp — nhỏ và nhạt hơn chip thường, vì đây là nút phụ nằm
+   ngay trên danh sách, không được tranh chỗ với chính danh sách. */
+.chips.sap-xep { margin: 0 4px 10px; gap: 6px; }
+.chips.sap-xep .chip { padding: 5px 11px; font-size: 11.5px; }
+
 /* ===== Bảng tìm kiếm ===== */
 .tim-box {
   background: var(--card);

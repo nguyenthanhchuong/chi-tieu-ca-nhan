@@ -21,6 +21,43 @@ Nếu đã cài app ra màn hình chính thì bấm **Tải lại bản mới** 
 
 ---
 
+## v16 — Chọn kiểu sắp xếp danh sách giao dịch
+
+Danh sách trước đây luôn xếp theo **thứ tự bấm Lưu**, nhưng dòng nào cũng hiện
+**ngày giao dịch**, nên nhìn dãy ngày thấy nhảy lung tung (03/11 rồi 06/11 rồi
+05/11) mà không biết vì sao.
+
+Nay có hai nút ngay trên danh sách:
+
+| Nút | Xếp theo |
+|---|---|
+| **Mới nhập** (mặc định, như cũ) | lúc bấm Lưu |
+| **Ngày giao dịch** | ngày anh chọn cho khoản đó |
+
+Hai mốc này lệch nhau khi ghi bù — hôm nay ghi bữa ăn của tuần trước. Cùng một
+ngày giao dịch thì khoản nhập sau nằm trên, để thứ tự trong ngày vẫn là thứ tự
+mình ghi.
+
+Lựa chọn được nhớ lại giữa các lần mở app, và áp cho **cả kết quả tìm kiếm** —
+tìm xong mà thứ tự nhảy về kiểu khác thì phải dò lại từ đầu.
+
+Lúc nhập lấy từ chính **mã khoản**, vốn đã nhúng mốc thời gian mili giây ở cả
+bốn dạng (`1793…-2574` khoản thu/chi, `cv-1793…` chuyển ví, `mv-1793…` chuyển
+lọ, `no-1793…` vay nợ). Nhờ vậy không phải đọc thêm cột "Thời điểm ghi" trên
+Sheet — đọc cột đó sẽ phải sửa Apps Script rồi deploy lại.
+
+Mã lạ không có cụm số nào thì trả 0, và nhờ sort của JS ổn định, những khoản đó
+giữ nguyên thứ tự cũ thay vì xáo lung tung.
+
+### Ghi chú cho lần sau: test.html dùng chung phạm vi toàn cục
+
+Nhóm test mới đặt `function soMau()` trùng tên với hàm dữ liệu mẫu của nhóm
+"Tình hình hiện tại" → khai báo sau đè lên khai báo trước → **8 ca của nhóm cũ
+hỏng im lặng** (khoản mẫu mất `wallet` nên tiền còn ra 0). Mỗi hàm dựng dữ liệu
+mẫu phải mang tên riêng của nhóm; ở đây đổi thành `soMauSapXep()`.
+
+Không đổi Apps Script, không thêm cột nào trên Sheet.
+
 ## v15 — Số dư đầu ví nhận số âm (thẻ tín dụng)
 
 Thẻ tín dụng không chứa tiền của mình, nó chứa **khoản mình nợ ngân hàng**, nên
