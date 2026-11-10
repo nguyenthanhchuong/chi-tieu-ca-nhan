@@ -123,8 +123,93 @@ const Logic = (function () {
     "Biếu tặng": "PLAY", "Từ thiện": "PLAY", "Đầu tư": "SAVE", "Mua tài sản": "SAVE"
   };
 
+  // Danh mục mặc định, dùng khi người dùng chưa tự cấu hình gì.
+  // Thứ tự ở đây chính là thứ tự chip hiện ra trên màn hình nhập.
+  const DANH_MUC_CHI_MAC_DINH = [
+    { ten: "Ăn uống", lo: "NEC" },
+    { ten: "Cà phê/Nhậu", lo: "PLAY" },
+    { ten: "Đi lại", lo: "NEC" },
+    { ten: "Điện thoại/Internet", lo: "NEC" },
+    { ten: "Sức khoẻ", lo: "NEC" },
+    { ten: "Mua sắm cá nhân", lo: "PLAY" },
+    { ten: "Thể thao", lo: "PLAY" },
+    { ten: "Giải trí", lo: "PLAY" },
+    { ten: "Học tập", lo: "EDU" },
+    { ten: "Mua tài sản", lo: "SAVE" },
+    { ten: "Khác", lo: "NEC" }
+  ];
+
+  const DANH_MUC_THU_MAC_DINH = [
+    "Lương", "Thưởng", "Tiền tiêu vặt", "Kinh doanh", "Được tặng", "Khác"
+  ];
+
+  // Bản đồ danh mục→lọ do NGƯỜI DÙNG cấu hình. Để ở phạm vi module thay vì
+  // truyền tham số vì doanLo được gọi từ 6 chỗ sâu bên trong logic này
+  // (soDuCacLo, tongKetLoc, chuanHoaHanMuc…); thêm tham số vào tất cả sẽ
+  // phải sửa cả chuỗi hàm gọi nhau, rủi ro hơn nhiều so với một biến ở đây.
+  // ĐÁNH ĐỔI: đây là trạng thái dùng chung. Test phải gọi datDanhMucChi(null)
+  // để trả về mặc định, nếu không nhóm test này sẽ làm sai nhóm test khác.
+  let loNguoiDungDat = null;
+
+  function datDanhMucChi(dsChi) {
+    if (!Array.isArray(dsChi) || !dsChi.length) { loNguoiDungDat = null; return; }
+    const m = {};
+    dsChi.forEach(d => {
+      const ten = String((d && d.ten) || "").trim();
+      if (ten && timLo((d && d.lo) || "")) m[ten] = d.lo;
+    });
+    loNguoiDungDat = Object.keys(m).length ? m : null;
+  }
+
+  // Thứ tự tra: cấu hình của người dùng → bảng gốc → NEC.
+  // Bảng gốc phải giữ lại vì khoản CŨ có thể mang danh mục người dùng đã xoá,
+  // hoặc danh mục của sổ gia đình; mất bảng này là chúng rơi hết vào NEC.
   function doanLo(danhMuc) {
+    if (loNguoiDungDat && loNguoiDungDat[danhMuc]) return loNguoiDungDat[danhMuc];
     return LO_THEO_DANH_MUC[danhMuc] || "NEC";
+  }
+
+  // Làm sạch cấu hình danh mục đọc từ Sheet: bỏ tên rỗng, bỏ trùng (giữ cái
+  // đầu), ép lọ về một key có thật. Hỏng hoặc rỗng thì trả về mặc định —
+  // sổ không bao giờ được rơi vào trạng thái không có danh mục nào để chọn.
+  function chuanHoaDanhMuc(cfg) {
+    const nguonChi = (cfg && Array.isArray(cfg.chi)) ? cfg.chi : null;
+    const nguonThu = (cfg && Array.isArray(cfg.thu)) ? cfg.thu : null;
+
+    const daCo = new Set();
+    const chi = [];
+    (nguonChi || []).forEach(d => {
+      const ten = String((d && d.ten) || "").trim();
+      if (!ten || daCo.has(ten)) return;
+      daCo.add(ten);
+      const lo = timLo((d && d.lo) || "") ? d.lo : (LO_THEO_DANH_MUC[ten] || "NEC");
+      chi.push({ ten, lo });
+    });
+
+    const daCoThu = new Set();
+    const thu = [];
+    (nguonThu || []).forEach(t => {
+      const ten = String(t || "").trim();
+      if (!ten || daCoThu.has(ten)) return;
+      daCoThu.add(ten);
+      thu.push(ten);
+    });
+
+    return {
+      chi: chi.length ? chi : DANH_MUC_CHI_MAC_DINH.map(d => ({ ten: d.ten, lo: d.lo })),
+      thu: thu.length ? thu : DANH_MUC_THU_MAC_DINH.slice()
+    };
+  }
+
+  // Đếm số khoản đang dùng từng danh mục chi — để cảnh báo trước khi xoá.
+  function demKhoanTheoDanhMuc(khoan) {
+    const kq = {};
+    (khoan || []).forEach(e => {
+      if (!laKhoanChi(e)) return;
+      const c = String((e && e.category) || "").trim();
+      if (c) kq[c] = (kq[c] || 0) + 1;
+    });
+    return kq;
   }
 
   // Chia khoản thu vào các lọ theo tỉ lệ.
@@ -1044,6 +1129,8 @@ const Logic = (function () {
     khoangKy, nhanKy, trongKhoang, tongHopKy, friendlyError,
     // Bốn chiếc lọ
     LOS, LO_MAC_DINH_NHAN_DU, timLo, tiLeMacDinh, doanLo,
+    DANH_MUC_CHI_MAC_DINH, DANH_MUC_THU_MAC_DINH,
+    chuanHoaDanhMuc, datDanhMucChi, demKhoanTheoDanhMuc,
     phanBo, phanBoCuaKhoanThu, soDuCacLo, chiTietLo, chiTietMuc, khoanCuaMuc, duChuaChuyen,
     maChuyenTuDong, lenhChuyenTuDong, ngayCuoiThang, kiemTraChuyen
   };

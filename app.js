@@ -7,15 +7,23 @@ const API_URL = "https://script.google.com/macros/s/AKfycbyojlwjaXl4iq4zguZFS0Ft
 // Mỗi danh mục trỏ đúng một lọ (xem LO_THEO_DANH_MUC trong logic.js).
 // Danh mục ở đây là chi tiêu RIÊNG: chợ búa, hoá đơn, đồ dùng gia đình
 // thuộc sổ gia đình nên không đưa vào để khỏi ghi trùng hai nơi.
-const CATEGORIES_CHI = [
-  "Ăn uống", "Cà phê/Nhậu", "Đi lại", "Điện thoại/Internet",
-  "Sức khoẻ", "Mua sắm cá nhân", "Thể thao", "Giải trí",
-  "Học tập", "Mua tài sản", "Khác"
-];
-const CATEGORIES_THU = [
-  "Lương", "Thưởng", "Tiền tiêu vặt", "Kinh doanh",
-  "Được tặng", "Khác"
-];
+// Danh mục KHÔNG còn nằm cứng ở đây nữa: người dùng tự thêm/sửa/xoá qua
+// "Sửa danh mục" ở màn hình nhập, lưu trong bảng CaiDat của Google Sheet
+// (khoá "danhMuc") nên mọi thiết bị thấy giống nhau. Danh sách mặc định nằm
+// trong logic.js và được dùng cho tới khi napCaiDat() tải xong cấu hình thật.
+let danhMucCfg = Logic.chuanHoaDanhMuc(null);
+function dsChi() { return danhMucCfg.chi.map(d => d.ten); }
+function dsThu() { return danhMucCfg.thu.slice(); }
+
+// Gọi mỗi khi danhMucCfg đổi: logic.js cần biết danh mục nào thuộc lọ nào.
+function apDungDanhMuc() {
+  danhMucCfg = Logic.chuanHoaDanhMuc(danhMucCfg);
+  Logic.datDanhMucChi(danhMucCfg.chi);
+  // Danh mục đang chọn có thể vừa bị xoá — kéo về mục đầu để không lưu
+  // khoản vào một danh mục không còn tồn tại.
+  const ds = danhMucHienTai();
+  if (ds.indexOf(selectedCategory) < 0) selectedCategory = ds[0];
+}
 // Sổ cá nhân chỉ có một chủ sổ. Vẫn ghi trường này xuống Sheet để giữ nguyên
 // cấu trúc cột, nhưng giao diện không cần hỏi "ai chi" nữa.
 const PAYERS = ["Chương"];
@@ -55,7 +63,7 @@ const store = {
 };
 
 let selectedKind = "Chi";                    // Chi hoặc Thu
-let selectedCategory = CATEGORIES_CHI[0];
+let selectedCategory = dsChi()[0];
 let selectedPayer = store.payer;
 let entries = [];
 
@@ -68,7 +76,7 @@ let statOffset = 0;       // 0 = kỳ hiện tại, -1 = kỳ trước
 let kieuSap = localStorage.getItem("ctcn_sap") || "nhap";
 
 function danhMucHienTai() {
-  return selectedKind === "Thu" ? CATEGORIES_THU : CATEGORIES_CHI;
+  return selectedKind === "Thu" ? dsThu() : dsChi();
 }
 
 // ===== Kho ảnh trong máy (IndexedDB) =====
@@ -477,7 +485,7 @@ function initNgay() {
 
 // ===== Gọi API =====
 // Tăng mỗi lần sửa app, hiển thị ở màn hình PIN để biết máy đang chạy bản nào.
-const APP_VERSION = "16";
+const APP_VERSION = "17";
 
 // ===== Nhật ký dò lỗi =====
 // Ghi vào localStorage nên còn nguyên kể cả khi trang tự nạp lại — đây là
@@ -960,7 +968,7 @@ function veDongCaiDatVi(ds) {
   const box = $("caidatvi-rows");
   box.innerHTML = ds.map((v, i) => `
     <div class="vi-nhap" data-i="${i}">
-      <input type="text" class="note-input vi-ten" value="${v}" placeholder="Tên ví">
+      <input type="text" class="note-input vi-ten" value="${thoatHtml(v)}" placeholder="Tên ví">
       <input type="text" class="note-input vi-dau" inputmode="numeric"
              placeholder="Số dư đầu"
              value="${caiDatVi.soDuDau[v] ? formatMoney(caiDatVi.soDuDau[v]) : ""}">
@@ -1017,6 +1025,135 @@ async function luuCaiDatVi() {
     nut.disabled = false;
     nut.textContent = "Lưu";
   }
+}
+
+// Tên ví và tên danh mục do người dùng gõ rồi được nhét thẳng vào innerHTML.
+// Một dấu nháy kép trong tên là đủ làm vỡ thuộc tính value và mất dòng đó.
+function thoatHtml(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+// ===== Quản lý danh mục =====
+function moHopDanhMuc() {
+  veDongDanhMuc();
+  $("danhmuc-error").hidden = true;
+  $("danhmuc-sheet").hidden = false;
+}
+
+function oChonLo(loKey) {
+  return Logic.LOS.map(l =>
+    `<option value="${l.key}"${l.key === loKey ? " selected" : ""}>${thoatHtml(l.ten)}</option>`
+  ).join("");
+}
+
+function veDongDanhMuc() {
+  // Đếm khoản đang dùng từng danh mục: xoá một mục đang có khoản thì khoản cũ
+  // vẫn giữ nguyên tên và lọ đã đóng, nhưng người dùng cần biết trước.
+  const dem = Logic.demKhoanTheoDanhMuc(tatCaKhoan());
+
+  $("dm-chi-rows").innerHTML = danhMucCfg.chi.map(d => `
+    <div class="dm-nhap">
+      <input type="text" class="note-input dm-ten" value="${thoatHtml(d.ten)}"
+             placeholder="Tên danh mục">
+      <select class="note-input dm-lo">${oChonLo(d.lo)}</select>
+      <button type="button" class="dm-xoa" title="Bỏ danh mục này">✕</button>
+      <span class="dm-dem">${dem[d.ten] ? dem[d.ten] + " khoản" : ""}</span>
+    </div>`).join("");
+
+  $("dm-thu-rows").innerHTML = danhMucCfg.thu.map(t => `
+    <div class="dm-nhap">
+      <input type="text" class="note-input dm-ten" value="${thoatHtml(t)}"
+             placeholder="Tên danh mục">
+      <button type="button" class="dm-xoa" title="Bỏ danh mục này">✕</button>
+    </div>`).join("");
+
+  $("danhmuc-sheet").querySelectorAll(".dm-xoa").forEach(b => {
+    b.addEventListener("click", () => b.closest(".dm-nhap").remove());
+  });
+}
+
+function themDongDanhMuc(loai) {
+  const box = $(loai === "thu" ? "dm-thu-rows" : "dm-chi-rows");
+  const d = document.createElement("div");
+  d.className = "dm-nhap";
+  d.innerHTML = loai === "thu"
+    ? `<input type="text" class="note-input dm-ten" placeholder="Tên danh mục">
+       <button type="button" class="dm-xoa" title="Bỏ danh mục này">✕</button>`
+    : `<input type="text" class="note-input dm-ten" placeholder="Tên danh mục">
+       <select class="note-input dm-lo">${oChonLo("NEC")}</select>
+       <button type="button" class="dm-xoa" title="Bỏ danh mục này">✕</button>
+       <span class="dm-dem"></span>`;
+  d.querySelector(".dm-xoa").addEventListener("click", () => d.remove());
+  box.appendChild(d);
+  d.querySelector(".dm-ten").focus();
+}
+
+async function luuDanhMuc() {
+  const chi = [];
+  const tenChi = new Set();
+  let trung = "";
+  $("dm-chi-rows").querySelectorAll(".dm-nhap").forEach(d => {
+    const ten = d.querySelector(".dm-ten").value.trim();
+    if (!ten) return;
+    if (tenChi.has(ten)) { trung = ten; return; }
+    tenChi.add(ten);
+    chi.push({ ten, lo: d.querySelector(".dm-lo").value });
+  });
+
+  const thu = [];
+  const tenThu = new Set();
+  $("dm-thu-rows").querySelectorAll(".dm-nhap").forEach(d => {
+    const ten = d.querySelector(".dm-ten").value.trim();
+    if (!ten) return;
+    if (tenThu.has(ten)) { trung = ten; return; }
+    tenThu.add(ten);
+    thu.push(ten);
+  });
+
+  const loi = $("danhmuc-error");
+  if (trung) {
+    loi.textContent = `Danh mục "${trung}" bị trùng tên. Mỗi tên chỉ dùng một lần.`;
+    loi.hidden = false;
+    return;
+  }
+  if (!chi.length || !thu.length) {
+    loi.textContent = "Cần ít nhất một danh mục chi và một danh mục thu.";
+    loi.hidden = false;
+    return;
+  }
+
+  const nut = $("danhmuc-ok");
+  nut.disabled = true;
+  nut.textContent = "Đang lưu…";
+  try {
+    const moi = { chi, thu };
+    await callApi("setSettings", { settings: { danhMuc: moi } }, { retries: 2 });
+    danhMucCfg = Logic.chuanHoaDanhMuc(moi);
+    apDungDanhMuc();
+    $("danhmuc-sheet").hidden = true;
+    showToast("Đã lưu danh mục");
+    renderChips();
+    render();
+  } catch (err) {
+    loi.textContent = friendlyError(err);
+    loi.hidden = false;
+  } finally {
+    nut.disabled = false;
+    nut.textContent = "Lưu";
+  }
+}
+
+function initDanhMuc() {
+  const mo = $("btn-sua-danhmuc");
+  if (mo) mo.addEventListener("click", moHopDanhMuc);
+  if ($("danhmuc-cancel")) {
+    $("danhmuc-cancel").addEventListener("click", () => { $("danhmuc-sheet").hidden = true; });
+  }
+  if ($("danhmuc-ok")) $("danhmuc-ok").addEventListener("click", luuDanhMuc);
+  if ($("btn-them-dm-chi")) $("btn-them-dm-chi").addEventListener("click", () => themDongDanhMuc("chi"));
+  if ($("btn-them-dm-thu")) $("btn-them-dm-thu").addEventListener("click", () => themDongDanhMuc("thu"));
 }
 
 function initVi() {
@@ -1433,7 +1570,7 @@ function moHopHanMuc() {
 
   // Gom danh mục chi theo lọ để anh thấy rõ mục nào nằm trong lọ nào
   const theoLo = {};
-  CATEGORIES_CHI.forEach(muc => {
+  dsChi().forEach(muc => {
     const k = Logic.doanLo(muc);
     (theoLo[k] = theoLo[k] || []).push(muc);
   });
@@ -1812,8 +1949,8 @@ function renderChartControls() {
   // Danh sách chọn: gộp cả nguồn thu, danh mục chi và người, để anh xem
   // diễn biến của đúng mục mình quan tâm.
   const oChuoi = $("chart-series");
-  const nhomThu = CATEGORIES_THU.map(c => `<option value="nguonThu:${c}">Thu · ${c}</option>`).join("");
-  const nhomChi = CATEGORIES_CHI.map(c => `<option value="danhMucChi:${c}">Chi · ${c}</option>`).join("");
+  const nhomThu = dsThu().map(c => `<option value="nguonThu:${c}">Thu · ${c}</option>`).join("");
+  const nhomChi = dsChi().map(c => `<option value="danhMucChi:${c}">Chi · ${c}</option>`).join("");
   // Một người thì "Chi bởi X" trùng với tổng chi, bỏ cho gọn danh sách.
   const nhomNguoi = PAYERS.length < 2 ? ""
     : PAYERS.map(p => `<option value="nguoiChi:${p}">Chi bởi ${p}</option>`).join("");
@@ -2070,9 +2207,16 @@ function moHopSua(id) {
   // chi đầu tiên và khoản cho vay biến thành khoản chi ngay lần lưu kế tiếp.
   const dsDanhMuc = laChuyen ? ["Chuyển lọ"]
     : laNo ? [e.type]
-    : (laThu ? CATEGORIES_THU : CATEGORIES_CHI);
+    : (laThu ? dsThu() : dsChi());
+  // Khoản CŨ có thể mang danh mục đã bị xoá khỏi cấu hình. Nếu không đưa nó
+  // trở lại danh sách thì ô select không khớp mục nào, trình duyệt tự chọn
+  // mục ĐẦU TIÊN, và chỉ cần bấm Lưu là khoản âm thầm đổi cả danh mục lẫn lọ.
+  if (!laChuyen && !laNo && e.category && dsDanhMuc.indexOf(e.category) < 0) {
+    dsDanhMuc.unshift(e.category);
+  }
   oDanhMuc.innerHTML = dsDanhMuc.map(c =>
-    `<option value="${c}"${c === e.category ? " selected" : ""}>${c}</option>`).join("");
+    `<option value="${thoatHtml(c)}"${c === e.category ? " selected" : ""}>${thoatHtml(c)}</option>`
+  ).join("");
   oDanhMuc.disabled = laChuyen || laNo;
 
   const oNguoi = $("edit-payer");
@@ -2549,6 +2693,11 @@ async function napCaiDat() {
     if (s.tiLe && typeof s.tiLe === "object") tiLeLo = s.tiLe;
     if (s.loNhanDu) loNhanDu = s.loNhanDu;
     if (s.hanMuc && typeof s.hanMuc === "object") hanMuc = s.hanMuc;
+    if (s.danhMuc && typeof s.danhMuc === "object") {
+      danhMucCfg = Logic.chuanHoaDanhMuc(s.danhMuc);
+      apDungDanhMuc();
+      renderChips();
+    }
     if (s.vi && typeof s.vi === "object") {
       caiDatVi = { ds: Logic.danhSachVi(s.vi), soDuDau: s.vi.soDuDau || {} };
       renderChipVi();
@@ -2848,6 +2997,7 @@ function init() {
   initTim();
   initHanMuc();
   initVi();
+  initDanhMuc();
   initAnh();
   initNo();
 

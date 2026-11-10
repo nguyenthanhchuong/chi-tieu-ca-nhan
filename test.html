@@ -1415,6 +1415,86 @@ test("khoản thiếu ngày không đẩy khoản khác sai chỗ", () => {
   bang(ds.map(e => e.date || ""), ["2026-11-08", "2026-11-02", ""]);
 });
 
+nhom("Danh mục người dùng tự quản lý");
+
+// CẢNH BÁO: Logic.datDanhMucChi đặt trạng thái DÙNG CHUNG trong logic.js.
+// Mọi ca ở nhóm này phải trả về mặc định trước khi kết thúc, nếu không các
+// nhóm chạy sau sẽ đoán lọ sai mà không hề báo lỗi — đúng kiểu bẫy đã dính
+// với hàm dữ liệu mẫu trùng tên.
+function datLaiDanhMucMacDinh() { Logic.datDanhMucChi(null); }
+
+function cfgMauDanhMuc() {
+  return {
+    chi: [{ ten: "Ăn uống", lo: "NEC" }, { ten: "Chơi game", lo: "PLAY" }],
+    thu: ["Lương", "Bán đồ cũ"]
+  };
+}
+
+test("cấu hình rỗng hoặc hỏng thì rơi về mặc định, không bao giờ trống", () => {
+  [null, undefined, {}, { chi: [], thu: [] }, { chi: "bậy", thu: 5 }].forEach(x => {
+    const c = Logic.chuanHoaDanhMuc(x);
+    bang(c.chi.length, Logic.DANH_MUC_CHI_MAC_DINH.length, JSON.stringify(x));
+    bang(c.thu.length, Logic.DANH_MUC_THU_MAC_DINH.length, JSON.stringify(x));
+  });
+});
+
+test("bỏ tên rỗng, bỏ trùng tên, giữ cái đầu tiên", () => {
+  const c = Logic.chuanHoaDanhMuc({
+    chi: [{ ten: "Ăn uống", lo: "NEC" }, { ten: "  ", lo: "NEC" },
+          { ten: "Ăn uống", lo: "PLAY" }, { ten: " Đi lại ", lo: "NEC" }],
+    thu: ["Lương", "", "Lương", " Thưởng "]
+  });
+  bang(c.chi.map(d => d.ten), ["Ăn uống", "Đi lại"]);
+  bang(c.chi[0].lo, "NEC", "giữ bản đầu, không để bản trùng ghi đè");
+  bang(c.thu, ["Lương", "Thưởng"]);
+});
+
+test("lọ không có thật bị ép về lọ hợp lệ", () => {
+  const c = Logic.chuanHoaDanhMuc({ chi: [{ ten: "Linh tinh", lo: "KHONG_CO" }], thu: ["Lương"] });
+  bang(!!Logic.timLo(c.chi[0].lo), true, "lọ sau khi chuẩn hoá phải tồn tại");
+});
+
+test("doanLo dùng cấu hình người dùng trước bảng gốc", () => {
+  bang(Logic.doanLo("Ăn uống"), "NEC", "trước khi đặt");
+  Logic.datDanhMucChi([{ ten: "Ăn uống", lo: "PLAY" }]);
+  bang(Logic.doanLo("Ăn uống"), "PLAY", "sau khi đặt");
+  datLaiDanhMucMacDinh();
+  bang(Logic.doanLo("Ăn uống"), "NEC", "sau khi trả về mặc định");
+});
+
+test("danh mục cũ đã xoá vẫn tra được lọ, không rơi hết vào NEC", () => {
+  // Người dùng xoá "Mua tài sản" khỏi cấu hình; khoản cũ vẫn mang tên đó.
+  Logic.datDanhMucChi(cfgMauDanhMuc().chi);
+  bang(Logic.doanLo("Mua tài sản"), "SAVE", "bảng gốc vẫn đỡ được");
+  bang(Logic.doanLo("Chơi game"), "PLAY", "danh mục mới do người dùng thêm");
+  bang(Logic.doanLo("Hoàn toàn lạ"), "NEC", "không biết thì về NEC");
+  datLaiDanhMucMacDinh();
+});
+
+test("đếm đúng số khoản đang dùng mỗi danh mục chi", () => {
+  const dem = Logic.demKhoanTheoDanhMuc([
+    { id: "1-1", type: "Chi", category: "Ăn uống", amount: 1000 },
+    { id: "2-2", type: "Chi", category: "Ăn uống", amount: 2000 },
+    { id: "3-3", type: "Chi", category: "Đi lại", amount: 3000 },
+    { id: "4-4", type: "Thu", category: "Lương", amount: 9000 }
+  ]);
+  bang(dem["Ăn uống"], 2);
+  bang(dem["Đi lại"], 1);
+  bang(dem["Lương"], undefined, "khoản thu không được đếm vào danh mục chi");
+});
+
+test("đếm trên sổ rỗng không nổ", () => {
+  bang(Logic.demKhoanTheoDanhMuc([]), {});
+  bang(Logic.demKhoanTheoDanhMuc(null), {});
+});
+
+test("ĐỐI CHỨNG: trạng thái đã sạch trước khi sang nhóm sau", () => {
+  // Nếu ca này hỏng thì mọi nhóm chạy sau đang bị nhóm này đầu độc.
+  bang(Logic.doanLo("Ăn uống"), "NEC");
+  bang(Logic.doanLo("Mua tài sản"), "SAVE");
+  bang(Logic.doanLo("Học tập"), "EDU");
+});
+
 (function veKetQua() {
   const dat = ketQua.filter(k => k.dat).length;
   const hong = ketQua.length - dat;

@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Chi Tiêu Cá Nhân">
-<link rel="stylesheet" href="style.css?v=16">
+<link rel="stylesheet" href="style.css?v=17">
 </head>
 <body>
 
@@ -72,6 +72,9 @@
       </div>
 
       <div class="chips" id="categories"></div>
+      <div class="dm-sua-hang">
+        <button type="button" class="link-btn" id="btn-sua-danhmuc">Sửa danh mục</button>
+      </div>
 
       <div class="date-row">
         <label class="date-label" for="entry-date">Ngày</label>
@@ -353,6 +356,32 @@
       </div>
     </div>
   </div>
+  <!-- Hộp quản lý danh mục: người dùng tự thêm/sửa/xoá, lưu vào Sheet -->
+  <div class="sheet" id="danhmuc-sheet" hidden>
+    <div class="sheet-card">
+      <h3 class="sheet-title">Sửa danh mục</h3>
+      <p class="sheet-sub">Mỗi dòng một danh mục. Danh mục chi phải chọn lọ —
+         lọ quyết định khoản đó trừ vào đâu.<br>
+         Đổi lọ chỉ áp dụng cho khoản ghi <strong>từ nay về sau</strong>;
+         khoản cũ giữ nguyên lọ đã ghi, nên sổ cũ không bị xáo.</p>
+
+      <h4 class="sheet-label">Danh mục chi</h4>
+      <div id="dm-chi-rows"></div>
+      <button type="button" class="link-btn" id="btn-them-dm-chi">+ Thêm danh mục chi</button>
+
+      <h4 class="sheet-label">Danh mục thu</h4>
+      <div id="dm-thu-rows"></div>
+      <button type="button" class="link-btn" id="btn-them-dm-thu">+ Thêm danh mục thu</button>
+
+      <p class="entry-error" id="danhmuc-error" hidden></p>
+
+      <div class="sheet-actions">
+        <button type="button" class="btn-ghost" id="danhmuc-cancel">Huỷ</button>
+        <button type="button" class="btn-primary" id="danhmuc-ok">Lưu</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Hộp đặt hạn mức chi tiêu theo danh mục -->
   <div class="sheet" id="hanmuc-sheet" hidden>
     <div class="sheet-card">
@@ -528,7 +557,7 @@
   <div class="toast" id="toast" hidden></div>
 </div>
 
-<script src="logic.js?v=16"></script>
-<script src="app.js?v=16"></script>
+<script src="logic.js?v=17"></script>
+<script src="app.js?v=17"></script>
 </body>
 </html>
