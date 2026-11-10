@@ -485,7 +485,7 @@ function initNgay() {
 
 // ===== Gọi API =====
 // Tăng mỗi lần sửa app, hiển thị ở màn hình PIN để biết máy đang chạy bản nào.
-const APP_VERSION = "17";
+const APP_VERSION = "18";
 
 // ===== Nhật ký dò lỗi =====
 // Ghi vào localStorage nên còn nguyên kể cả khi trang tự nạp lại — đây là
@@ -688,10 +688,15 @@ function renderChips() {
     btn.type = "button";
     btn.className = "chip" + (cat === selectedCategory ? " on" : "");
     btn.textContent = cat;
+    btn.dataset.ten = cat;
     btn.addEventListener("click", () => {
+      // Sau một lần kéo, trình duyệt vẫn bắn click. Bỏ qua, nếu không thì
+      // kéo xong là danh mục đang chọn bị đổi theo chỗ vừa thả.
+      if (vuaKeoXong) { vuaKeoXong = false; return; }
       selectedCategory = cat;
       renderChips();
     });
+    ganKeoChip(btn);
     catBox.appendChild(btn);
   });
 
@@ -1035,6 +1040,121 @@ function thoatHtml(s) {
     .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
+// ===== Kéo chip để đổi thứ tự danh mục =====
+// Chip vừa là nút CHỌN danh mục — thao tác dùng nhiều nhất trong app — vừa là
+// thứ kéo được. Ranh giới giữa hai việc: phải GIỮ đủ lâu mà KHÔNG trượt tay.
+// Trượt tay sớm nghĩa là đang cuộn trang, phải nhường cho cuộn.
+const GIU_MS = 450;
+const TRUOT_HUY = 10;
+
+let keo = null;           // { el, timer, x0, y0, dangKeo }
+let vuaKeoXong = false;   // chặn cú click trình duyệt bắn ra ngay sau khi thả
+
+function ganKeoChip(btn) {
+  btn.addEventListener("touchstart", e => {
+    const t = e.touches[0];
+    batDauGiu(btn, t.clientX, t.clientY);
+  }, { passive: true });
+  btn.addEventListener("mousedown", e => batDauGiu(btn, e.clientX, e.clientY));
+}
+
+function batDauGiu(el, x, y) {
+  huyKeo();
+  const k = { el, x0: x, y0: y, dangKeo: false, timer: null };
+  k.timer = setTimeout(() => {
+    if (keo !== k) return;
+    k.dangKeo = true;
+    el.classList.add("chip-keo");
+    // Chip đang kéo phải trong suốt với con trỏ, nếu không elementFromPoint
+    // chỉ trả về chính nó và không bao giờ tìm được chip nằm dưới ngón tay.
+    el.style.pointerEvents = "none";
+    if (navigator.vibrate) { try { navigator.vibrate(15); } catch (err) {} }
+  }, GIU_MS);
+  keo = k;
+}
+
+// Trả true khi đang thật sự kéo, để nơi gọi chặn cuộn trang.
+function diChuyenKeo(x, y) {
+  if (!keo) return false;
+  if (!keo.dangKeo) {
+    if (Math.abs(x - keo.x0) > TRUOT_HUY || Math.abs(y - keo.y0) > TRUOT_HUY) huyKeo();
+    return false;
+  }
+  const duoi = document.elementFromPoint(x, y);
+  const dich = (duoi && duoi.closest) ? duoi.closest(".chip") : null;
+  if (dich && dich !== keo.el && dich.parentElement === keo.el.parentElement) {
+    // Xen trước hay sau tuỳ chiều di chuyển, để lưới chảy đúng hướng ngón tay.
+    const dichDungTruoc = !!(dich.compareDocumentPosition(keo.el) & Node.DOCUMENT_POSITION_FOLLOWING);
+    keo.el.parentElement.insertBefore(keo.el, dichDungTruoc ? dich : dich.nextSibling);
+  }
+  return true;
+}
+
+function thaKeo() {
+  if (!keo) return;
+  const daKeo = keo.dangKeo;
+  const el = keo.el;
+  clearTimeout(keo.timer);
+  el.classList.remove("chip-keo");
+  el.style.pointerEvents = "";
+  keo = null;
+  if (!daKeo) return;
+  vuaKeoXong = true;
+  // Hai lớp dọn cờ: cú click giả tự dọn, và hẹn giờ phòng khi click không tới
+  // (nếu kẹt lại, cú CHẠM THẬT kế tiếp sẽ bị nuốt mất).
+  setTimeout(() => { vuaKeoXong = false; }, 500);
+  luuThuTuDanhMuc();
+}
+
+function huyKeo() {
+  if (!keo) return;
+  clearTimeout(keo.timer);
+  keo.el.classList.remove("chip-keo");
+  keo.el.style.pointerEvents = "";
+  keo = null;
+}
+
+function luuThuTuDanhMuc() {
+  const ten = Array.from($("categories").querySelectorAll(".chip")).map(b => b.dataset.ten);
+  const laThu = selectedKind === "Thu";
+  const goc = laThu ? danhMucCfg.thu : danhMucCfg.chi.map(d => d.ten);
+
+  // CHỐT AN TOÀN: nếu số lượng lệch thì có gì đó sai, mà chuanHoaDanhMuc gặp
+  // danh sách rỗng sẽ trả về MẶC ĐỊNH — tức là xoá sạch danh mục anh tự đặt.
+  // Thà không đổi thứ tự còn hơn mất cấu hình.
+  if (ten.length !== goc.length || ten.some(t => goc.indexOf(t) < 0)) {
+    renderChips();
+    return;
+  }
+
+  if (laThu) {
+    danhMucCfg = Logic.chuanHoaDanhMuc({ chi: danhMucCfg.chi, thu: ten });
+  } else {
+    const theoTen = {};
+    danhMucCfg.chi.forEach(d => { theoTen[d.ten] = d; });
+    danhMucCfg = Logic.chuanHoaDanhMuc({ chi: ten.map(t => theoTen[t]), thu: danhMucCfg.thu });
+  }
+  apDungDanhMuc();
+
+  // Gửi nền: đổi thứ tự là việc nhỏ, không đáng bắt anh đứng chờ 3 giây.
+  callApi("setSettings", { settings: { danhMuc: danhMucCfg } }, { retries: 2 })
+    .then(() => showToast("Đã đổi thứ tự danh mục"))
+    .catch(err => showToast("Chưa lưu được thứ tự — " + friendlyError(err)));
+}
+
+function initKeoChip() {
+  document.addEventListener("touchmove", e => {
+    if (!keo) return;
+    const t = e.touches[0];
+    // Chặn cuộn CHỈ khi đã vào chế độ kéo; trước đó phải để anh cuộn bình thường.
+    if (diChuyenKeo(t.clientX, t.clientY)) e.preventDefault();
+  }, { passive: false });
+  document.addEventListener("touchend", thaKeo);
+  document.addEventListener("touchcancel", huyKeo);
+  document.addEventListener("mousemove", e => { if (keo) diChuyenKeo(e.clientX, e.clientY); });
+  document.addEventListener("mouseup", thaKeo);
+}
+
 // ===== Quản lý danh mục =====
 function moHopDanhMuc() {
   veDongDanhMuc();
@@ -1058,19 +1178,47 @@ function veDongDanhMuc() {
       <input type="text" class="note-input dm-ten" value="${thoatHtml(d.ten)}"
              placeholder="Tên danh mục">
       <select class="note-input dm-lo">${oChonLo(d.lo)}</select>
-      <button type="button" class="dm-xoa" title="Bỏ danh mục này">✕</button>
-      <span class="dm-dem">${dem[d.ten] ? dem[d.ten] + " khoản" : ""}</span>
+      ${hangNut(dem[d.ten] ? dem[d.ten] + " khoản" : "")}
     </div>`).join("");
 
   $("dm-thu-rows").innerHTML = danhMucCfg.thu.map(t => `
     <div class="dm-nhap">
       <input type="text" class="note-input dm-ten" value="${thoatHtml(t)}"
              placeholder="Tên danh mục">
-      <button type="button" class="dm-xoa" title="Bỏ danh mục này">✕</button>
+      ${hangNut("")}
     </div>`).join("");
 
-  $("danhmuc-sheet").querySelectorAll(".dm-xoa").forEach(b => {
+  ganNutDongDanhMuc($("danhmuc-sheet"));
+}
+
+// Các nút nằm ở DÒNG RIÊNG bên dưới. Nhét chung một hàng với ô tên và ô lọ
+// thì trên màn hình 375px tên bị cắt còn "Mua sắm cá…", không phân biệt nổi.
+// ↑ ↓ là đường lùi cho việc kéo chip: luôn sắp xếp được kể cả khi kéo chưa mượt.
+function hangNut(ghiChu) {
+  return `<div class="dm-nut">
+            <span class="dm-dem">${thoatHtml(ghiChu)}</span>
+            <button type="button" class="dm-len" title="Lên trên">↑</button>
+            <button type="button" class="dm-xuong" title="Xuống dưới">↓</button>
+            <button type="button" class="dm-xoa" title="Bỏ danh mục này">✕</button>
+          </div>`;
+}
+
+function ganNutDongDanhMuc(goc) {
+  goc.querySelectorAll(".dm-xoa").forEach(b => {
     b.addEventListener("click", () => b.closest(".dm-nhap").remove());
+  });
+  goc.querySelectorAll(".dm-len").forEach(b => {
+    b.addEventListener("click", () => {
+      const d = b.closest(".dm-nhap");
+      if (d.previousElementSibling) d.parentElement.insertBefore(d, d.previousElementSibling);
+    });
+  });
+  goc.querySelectorAll(".dm-xuong").forEach(b => {
+    b.addEventListener("click", () => {
+      const d = b.closest(".dm-nhap");
+      const sau = d.nextElementSibling;
+      if (sau) d.parentElement.insertBefore(sau, d);
+    });
   });
 }
 
@@ -1080,12 +1228,11 @@ function themDongDanhMuc(loai) {
   d.className = "dm-nhap";
   d.innerHTML = loai === "thu"
     ? `<input type="text" class="note-input dm-ten" placeholder="Tên danh mục">
-       <button type="button" class="dm-xoa" title="Bỏ danh mục này">✕</button>`
+       ${hangNut("")}`
     : `<input type="text" class="note-input dm-ten" placeholder="Tên danh mục">
        <select class="note-input dm-lo">${oChonLo("NEC")}</select>
-       <button type="button" class="dm-xoa" title="Bỏ danh mục này">✕</button>
-       <span class="dm-dem"></span>`;
-  d.querySelector(".dm-xoa").addEventListener("click", () => d.remove());
+       ${hangNut("")}`;
+  ganNutDongDanhMuc(d);
   box.appendChild(d);
   d.querySelector(".dm-ten").focus();
 }
@@ -1146,6 +1293,7 @@ async function luuDanhMuc() {
 }
 
 function initDanhMuc() {
+  initKeoChip();
   const mo = $("btn-sua-danhmuc");
   if (mo) mo.addEventListener("click", moHopDanhMuc);
   if ($("danhmuc-cancel")) {

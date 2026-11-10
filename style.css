@@ -996,9 +996,41 @@ body {
 /* ===== Quản lý danh mục ===== */
 .dm-sua-hang {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
   margin: -2px 0 10px;
 }
+.dm-goi-y {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* Chip đang được nhấc lên để kéo. Phải thấy rõ KHÁC hẳn chip thường, nếu
+   không người dùng không biết mình đang kéo hay đang chọn. */
+.chip-keo {
+  transform: scale(1.1);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28);
+  opacity: 0.92;
+  position: relative;
+  z-index: 5;
+  transition: none;
+}
+/* Trong lúc kéo, chặn trình duyệt tự bôi đen chữ và hiện menu giữ-để-chọn */
+.chips { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+
+.dm-len, .dm-xuong {
+  flex-shrink: 0;
+  width: 34px; height: 32px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--muted);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  cursor: pointer;
+}
+.dm-len:active, .dm-xuong:active { color: var(--accent); }
 .dm-nhap {
   display: flex;
   gap: 6px;
@@ -1006,11 +1038,24 @@ body {
   margin-bottom: 8px;
   flex-wrap: wrap;
 }
+.dm-nhap {
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
 .dm-nhap .dm-ten { flex: 1.6; min-width: 0; }
-.dm-nhap .dm-lo  { flex: 1.5; min-width: 0; }
+.dm-nhap .dm-lo  { flex: 1.2; min-width: 0; }
+/* Các nút xuống dòng riêng: chung hàng với ô tên thì tên bị cắt cụt */
+.dm-nut {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.dm-nut .dm-dem { margin-right: auto; }
 .dm-xoa {
   flex-shrink: 0;
-  width: 34px; height: 38px;
+  width: 34px; height: 32px;
   font-family: inherit;
   font-size: 14px;
   color: var(--muted);
@@ -1022,12 +1067,10 @@ body {
 .dm-xoa:active { color: var(--danger); }
 /* Số khoản đang dùng danh mục này — cảnh báo nhẹ trước khi xoá nhầm */
 .dm-dem {
-  flex-basis: 100%;
   font-size: 11px;
   color: var(--muted);
   padding-left: 2px;
 }
-.dm-dem:empty { display: none; }
 #danhmuc-sheet .sheet-label {
   display: block;
   margin: 14px 0 6px;
