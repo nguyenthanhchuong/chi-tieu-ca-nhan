@@ -1570,6 +1570,74 @@ test("chi tiết lọ THÁNG ở tháng sau không còn dòng nền", () => {
   bang(ct.some(d => d.moTa === "Số dư đầu sổ"), false);
 });
 
+nhom("Ví tài sản");
+
+// Đúng tình huống mua nhà: vay 1,1 tỷ về ví Ngân hàng, rồi CHUYỂN VÍ sang ví
+// tài sản "Nhà HVC". Tiền không mất đi nên không được đụng tới lọ nào.
+function soMauViTS() {
+  return [
+    { id: "2000000000001-1", date: "2026-04-11", type: "Đi vay",
+      doiTuong: "Ngân hàng ABC", amount: 1100000000, wallet: "Ngân hàng" },
+    { id: "2000000000002-2", date: "2026-04-11", type: "Chuyển ví",
+      amount: 1100000000, wallet: "Ngân hàng", walletTo: "Nhà HVC",
+      note: "Mua nhà HVC" }
+  ];
+}
+function cfgViTS(danhDau) {
+  return {
+    ds: ["Ngân hàng", "Nhà HVC"],
+    soDuDau: { "Ngân hàng": 50000000 },
+    taiSan: danhDau ? { "Nhà HVC": true } : {}
+  };
+}
+
+test("laViTaiSan chịu được cấu hình thiếu hoặc rỗng", () => {
+  bang(Logic.laViTaiSan(null, "Nhà HVC"), false, "cấu hình null");
+  bang(Logic.laViTaiSan({}, "Nhà HVC"), false, "không có khoá taiSan");
+  bang(Logic.laViTaiSan(cfgViTS(false), "Nhà HVC"), false, "chưa đánh dấu");
+  bang(Logic.laViTaiSan(cfgViTS(true), "Nhà HVC"), true, "đã đánh dấu");
+  bang(Logic.laViTaiSan(cfgViTS(true), "Ngân hàng"), false, "ví thường");
+});
+
+test("số dư hai ví đúng: tiền vay vào rồi chuyển hết sang ví tài sản", () => {
+  const kq = Logic.soDuCacVi(soMauViTS(), cfgViTS(true));
+  bang(kq.vi["Ngân hàng"].con, 50000000, "ví Ngân hàng chỉ còn số dư đầu");
+  bang(kq.vi["Nhà HVC"].con, 1100000000, "ví tài sản giữ căn nhà");
+  bang(kq.vi["Nhà HVC"].taiSan, true, "cờ tài sản");
+  bang(kq.vi["Ngân hàng"].taiSan, false, "ví thường không có cờ");
+});
+
+test("mua nhà bằng chuyển ví KHÔNG đụng tới lọ nào", () => {
+  const so = Logic.soDuCacLo(soMauViTS(), "2026-04", null, {});
+  bang(so.NEC.con, 0, "lọ Thiết yếu không bị trừ");
+  bang(so.NEC.ra, 0, "không có đồng nào tính là chi");
+});
+
+test("ví tài sản KHÔNG vào Tiền còn, nhưng CÓ vào tài sản ròng", () => {
+  const t = Logic.tinhHinhHienTai(soMauViTS(), cfgViTS(true), []);
+  bang(t.tienCon, 50000000, "Tiền còn chỉ là tiền tiêu được");
+  bang(t.taiSanKhac, 1100000000, "căn nhà nằm riêng");
+  bang(t.minhNoHo, 1100000000, "khoản vay vẫn là nợ");
+  // 50tr + 1,1 tỷ − 1,1 tỷ = 50tr. Đây mới là bức tranh thật.
+  bang(t.rong, 50000000, "tài sản ròng");
+});
+
+test("ĐỐI CHỨNG: bỏ cờ tài sản thì căn nhà chui vào Tiền còn", () => {
+  const t = Logic.tinhHinhHienTai(soMauViTS(), cfgViTS(false), []);
+  bang(t.tienCon, 1150000000, "gộp chung — con số gây hiểu lầm");
+  bang(t.taiSanKhac, 0, "không có gì được tách ra");
+  // Cờ chỉ đổi cách CHIA, không đổi tổng. Nếu số này lệch là công thức sai.
+  bang(t.rong, 50000000, "tài sản ròng không đổi");
+});
+
+test("cấu hình ví kiểu cũ (chưa có khoá taiSan) chạy y như trước", () => {
+  const cu = { ds: ["Ngân hàng", "Nhà HVC"], soDuDau: { "Ngân hàng": 50000000 } };
+  const t = Logic.tinhHinhHienTai(soMauViTS(), cu, []);
+  bang(t.tienCon, 1150000000);
+  bang(t.taiSanKhac, 0);
+  bang(t.rong, 50000000);
+});
+
 (function veKetQua() {
   const dat = ketQua.filter(k => k.dat).length;
   const hong = ketQua.length - dat;

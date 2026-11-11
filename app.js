@@ -485,7 +485,7 @@ function initNgay() {
 
 // ===== Gọi API =====
 // Tăng mỗi lần sửa app, hiển thị ở màn hình PIN để biết máy đang chạy bản nào.
-const APP_VERSION = "19";
+const APP_VERSION = "20";
 
 // ===== Nhật ký dò lỗi =====
 // Ghi vào localStorage nên còn nguyên kể cả khi trang tự nạp lại — đây là
@@ -834,7 +834,7 @@ function render() {
 // ===== Ví / nguồn tiền =====
 // Ví trả lời "tiền đang NẰM Ở ĐÂU", lọ trả lời "tiền DÀNH CHO việc gì".
 // Một khoản chi vừa trừ lọ vừa trừ ví — hai chiều độc lập nhau.
-let caiDatVi = { ds: Logic.VI_MAC_DINH.slice(), soDuDau: {} };
+let caiDatVi = { ds: Logic.VI_MAC_DINH.slice(), soDuDau: {}, taiSan: {} };
 let viDangChon = localStorage.getItem("ctcn_vi") || "";
 
 function dsVi() { return Logic.danhSachVi(caiDatVi); }
@@ -872,14 +872,17 @@ function renderVi() {
     note.hidden = true;
   }
 
-  const tong = kq.thuTu.reduce((s, v) => s + kq.vi[v].con, 0);
+  // Tách hai tổng: tiền tiêu được và tài sản. Gộp lại thì dòng "Tổng các ví"
+  // nói mình có hơn tỷ, trong khi đó là căn nhà.
+  const tongTien = kq.thuTu.reduce((s, v) => s + (kq.vi[v].taiSan ? 0 : kq.vi[v].con), 0);
+  const tongTS   = kq.thuTu.reduce((s, v) => s + (kq.vi[v].taiSan ? kq.vi[v].con : 0), 0);
   box.innerHTML = kq.thuTu.map(v => {
     const o = kq.vi[v];
     const am = o.con < 0 ? " am" : "";
     return `
       <div class="jar">
         <div class="jar-top">
-          <span class="jar-name">${o.ten}${o.ngoaiDs ? '<span class="jar-tag">đã bỏ</span>' : ""}</span>
+          <span class="jar-name">${o.ten}${o.ngoaiDs ? '<span class="jar-tag">đã bỏ</span>' : ""}${o.taiSan ? '<span class="jar-tag">tài sản</span>' : ""}</span>
           <span class="jar-left${am}">${formatMoney(o.con)} đ</span>
         </div>
         <div class="jar-sub">
@@ -889,10 +892,17 @@ function renderVi() {
   }).join("") + `
     <div class="jar vi-tong">
       <div class="jar-top">
-        <span class="jar-name">Tổng các ví</span>
-        <span class="jar-left${tong < 0 ? " am" : ""}">${formatMoney(tong)} đ</span>
+        <span class="jar-name">${tongTS ? "Tổng tiền trong ví" : "Tổng các ví"}</span>
+        <span class="jar-left${tongTien < 0 ? " am" : ""}">${formatMoney(tongTien)} đ</span>
       </div>
-    </div>`;
+    </div>` + (tongTS ? `
+    <div class="jar vi-tong">
+      <div class="jar-top">
+        <span class="jar-name">Tổng ví tài sản</span>
+        <span class="jar-left${tongTS < 0 ? " am" : ""}">${formatMoney(tongTS)} đ</span>
+      </div>
+      <div class="jar-sub">không phải tiền tiêu được, chỉ tính vào tài sản ròng</div>
+    </div>` : "");
 
   // Lịch sử chuyển ví gần đây
   const ls = tatCaKhoan().filter(Logic.laChuyenVi).slice(0, 8);
@@ -963,21 +973,39 @@ async function luuChuyenVi() {
   }
 }
 
+// Đọc đúng những gì đang hiện trên màn hình, kể cả phần chưa lưu.
+// Vẽ lại từ caiDatVi thì mọi thứ anh vừa gõ/vừa tích sẽ biến mất không báo.
+function dongViDangHien() {
+  return [...$("caidatvi-rows").querySelectorAll(".vi-nhap")].map(d => ({
+    ten: d.querySelector(".vi-ten").value,
+    dau: Logic.parseAmountCoAm(d.querySelector(".vi-dau").value),
+    ts: !!(d.querySelector(".vi-tschk") || {}).checked
+  }));
+}
+
 function moHopCaiDatVi() {
-  veDongCaiDatVi(dsVi());
+  veDongCaiDatVi(dsVi().map(v => ({
+    ten: v,
+    dau: caiDatVi.soDuDau[v] || 0,
+    ts: !!(caiDatVi.taiSan || {})[v]
+  })));
   $("caidatvi-error").hidden = true;
   $("caidatvi-sheet").hidden = false;
 }
 
 function veDongCaiDatVi(ds) {
   const box = $("caidatvi-rows");
-  box.innerHTML = ds.map((v, i) => `
+  box.innerHTML = ds.map((o, i) => `
     <div class="vi-nhap" data-i="${i}">
-      <input type="text" class="note-input vi-ten" value="${thoatHtml(v)}" placeholder="Tên ví">
+      <input type="text" class="note-input vi-ten" value="${thoatHtml(o.ten)}" placeholder="Tên ví">
       <input type="text" class="note-input vi-dau" inputmode="numeric"
              placeholder="Số dư đầu"
-             value="${caiDatVi.soDuDau[v] ? formatMoney(caiDatVi.soDuDau[v]) : ""}">
+             value="${o.dau ? formatMoney(o.dau) : ""}">
       <button type="button" class="vi-xoa" title="Bỏ ví này">✕</button>
+      <label class="vi-ts">
+        <input type="checkbox" class="vi-tschk"${o.ts ? " checked" : ""}>
+        <span>Ví tài sản (nhà, đất, xe…) — không tính vào “Tiền còn”</span>
+      </label>
     </div>`).join("");
 
   box.querySelectorAll(".vi-dau").forEach(o => {
@@ -997,6 +1025,7 @@ function veDongCaiDatVi(ds) {
 async function luuCaiDatVi() {
   const ds = [];
   const soDuDau = {};
+  const taiSan = {};
   $("caidatvi-rows").querySelectorAll(".vi-nhap").forEach(d => {
     const ten = d.querySelector(".vi-ten").value.trim();
     if (!ten || ds.includes(ten)) return;
@@ -1004,6 +1033,8 @@ async function luuCaiDatVi() {
     // Nhận cả số âm: thẻ tín dụng đang nợ thì số dư đầu là số âm.
     const n = Logic.parseAmountCoAm(d.querySelector(".vi-dau").value);
     if (n) soDuDau[ten] = n;
+    const ts = d.querySelector(".vi-tschk");
+    if (ts && ts.checked) taiSan[ten] = true;
   });
 
   if (!ds.length) {
@@ -1016,7 +1047,7 @@ async function luuCaiDatVi() {
   nut.disabled = true;
   nut.textContent = "Đang lưu…";
   try {
-    const moi = { ds, soDuDau };
+    const moi = { ds, soDuDau, taiSan };
     await callApi("setSettings", { settings: { vi: moi } }, { retries: 2 });
     caiDatVi = moi;
     $("caidatvi-sheet").hidden = true;
@@ -1314,8 +1345,7 @@ function initVi() {
   if ($("caidatvi-ok")) $("caidatvi-ok").addEventListener("click", luuCaiDatVi);
   if ($("btn-them-vi")) {
     $("btn-them-vi").addEventListener("click", () => {
-      const dangCo = [...$("caidatvi-rows").querySelectorAll(".vi-ten")].map(o => o.value.trim());
-      veDongCaiDatVi(dangCo.concat([""]));
+      veDongCaiDatVi(dongViDangHien().concat([{ ten: "", dau: 0, ts: false }]));
     });
   }
 }
@@ -2137,8 +2167,12 @@ function renderHienTai() {
   // mà đếm vào thì câu "trong 4 ví" là nói dối.
   const viDung = t.thuTuVi.filter(v => {
     const o = t.vi[v];
+    if (o.taiSan) return false;
     return o.con !== 0 || o.thu || o.chi || o.den || o.di || o.soDuDau;
   }).length;
+
+  // Tên ví tài sản, để dòng "Tài sản khác" nói rõ đang tính cái gì.
+  const tenTS = t.thuTuVi.filter(v => t.vi[v].taiSan && t.vi[v].con !== 0);
 
   let html = `<h3>Tình hình hiện tại</h3>`;
 
@@ -2147,6 +2181,13 @@ function renderHienTai() {
     viDung ? `đang nằm trong ${viDung} ví` : "chưa có ví nào có tiền",
     t.tienCon, t.tienCon < 0 ? "am" : "con", "tab-btn-vi"
   );
+
+  if (t.taiSanKhac) {
+    html += hangHienTai(
+      "Tài sản khác", tenTS.length ? tenTS.join(", ") : "ví tài sản",
+      t.taiSanKhac, t.taiSanKhac < 0 ? "am" : "con", "tab-btn-vi"
+    );
+  }
 
   if (t.tietKiem > 0) {
     html += hangHienTai(
@@ -2165,14 +2206,18 @@ function renderHienTai() {
   );
 
   html += hangHienTai(
-    "Tiền mặt ròng", "cộng hết lại, trừ phần phải trả",
+    t.taiSanKhac ? "Tài sản ròng" : "Tiền mặt ròng",
+    "cộng hết lại, trừ phần phải trả",
     t.rong, t.rong < 0 ? "am" : "con", null, "hn-tong"
   );
 
   // Dòng này là bắt buộc. Vay 900 triệu mua nhà thì "tiền mặt ròng" âm gần 900 triệu,
   // đúng về số nhưng sai về tình hình — sổ không có chỗ ghi căn nhà.
-  html += `<p class="hn-chu">Chưa tính nhà, đất, xe và tài sản khác — sổ này
-           chỉ theo dõi tiền.</p>`;
+  html += t.taiSanKhac
+    ? `<p class="hn-chu">Đã tính các ví tài sản anh khai báo. Tài sản nào chưa
+       lập ví thì vẫn chưa nằm trong con số này.</p>`
+    : `<p class="hn-chu">Chưa tính nhà, đất, xe và tài sản khác — sổ này
+       chỉ theo dõi tiền.</p>`;
 
   if (t.chuaGanVi) {
     html += `<p class="hn-canh">${t.chuaGanVi} khoản chưa gán ví nên không nằm
@@ -2850,7 +2895,8 @@ async function napCaiDat() {
       renderChips();
     }
     if (s.vi && typeof s.vi === "object") {
-      caiDatVi = { ds: Logic.danhSachVi(s.vi), soDuDau: s.vi.soDuDau || {} };
+      caiDatVi = { ds: Logic.danhSachVi(s.vi), soDuDau: s.vi.soDuDau || {},
+                   taiSan: s.vi.taiSan || {} };
       renderChipVi();
     }
     if (Array.isArray(s.tietKiem)) {

@@ -974,9 +974,30 @@ body {
 
 .vi-nhap {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   align-items: center;
   margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+/* Ô tích nằm riêng một dòng. Nhét chung dòng với tên ví và số dư đầu thì
+   trên điện thoại tên ví bị cắt cụt — đã mắc đúng lỗi này ở phần danh mục. */
+.vi-ts {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--muted);
+  cursor: pointer;
+}
+.vi-ts input {
+  flex-shrink: 0;
+  width: 16px; height: 16px;
+  accent-color: var(--accent);
 }
 .vi-nhap .vi-ten { flex: 2; min-width: 0; }
 .vi-nhap .vi-dau { flex: 1.4; min-width: 0; }

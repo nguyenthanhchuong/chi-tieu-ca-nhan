@@ -636,6 +636,15 @@ const Logic = (function () {
     return (ds && ds.length) ? ds : VI_MAC_DINH.slice();
   }
 
+  // Ví TÀI SẢN: chỗ chứa thứ không phải tiền (nhà, đất, xe, vàng). Vẫn là ví
+  // để khoản mua được ghi bằng Chuyển ví — tiền rời ví này sang ví kia, không
+  // phải tiêu mất nên không đụng tới lọ. Nhưng KHÔNG được cộng vào "Tiền còn":
+  // căn nhà không phải tiền tiêu được. Nó chỉ cộng vào tài sản ròng.
+  function laViTaiSan(caiDatVi, ten) {
+    const m = (caiDatVi && caiDatVi.taiSan) || {};
+    return !!m[ten];
+  }
+
   // Số dư từng ví = số dư đầu + thu vào − chi ra + chuyển đến − chuyển đi.
   // Cộng dồn từ đầu sổ, không theo tháng: ví là số dư thực tại một thời điểm.
   // Khoản chuyển LỌ không đụng tới ví (tiền vẫn nằm nguyên chỗ cũ).
@@ -678,6 +687,7 @@ const Logic = (function () {
     Object.keys(kq).forEach(v => {
       const o = kq[v];
       o.con = o.soDuDau + o.thu - o.chi + o.den - o.di;
+      o.taiSan = laViTaiSan(caiDatVi, v);
     });
     return { vi: kq, thuTu: Object.keys(kq), chuaGanVi };
   }
@@ -807,8 +817,13 @@ const Logic = (function () {
   // nếu không người xem sẽ tưởng mình đang vỡ nợ.
   function tinhHinhHienTai(khoan, caiDatVi, soTietKiem) {
     const vi = soDuCacVi(khoan, caiDatVi);
-    const tienCon = Object.keys(vi.vi)
-      .reduce((s, k) => s + (Number(vi.vi[k].con) || 0), 0);
+    // Ví tài sản KHÔNG vào "Tiền còn". Gộp chung thì nhìn vào sẽ tưởng đang
+    // có hơn tỷ tiền mặt trong khi đó là căn nhà, không rút ra tiêu được.
+    let tienCon = 0, taiSanKhac = 0;
+    Object.keys(vi.vi).forEach(k => {
+      const n = Number(vi.vi[k].con) || 0;
+      if (vi.vi[k].taiSan) taiSanKhac += n; else tienCon += n;
+    });
 
     const dsNo = soDuNo(khoan);
     const no = tomTatNo(dsNo);
@@ -817,10 +832,11 @@ const Logic = (function () {
 
     // Gộp mọi thứ là tiền: trong ví + đang gửi + người ta sẽ trả mình,
     // trừ đi phần mình sẽ phải trả người ta.
-    const rong = tienCon + tk.tongGoc + no.hoNoMinh - no.minhNoHo;
+    const rong = tienCon + taiSanKhac + tk.tongGoc + no.hoNoMinh - no.minhNoHo;
 
     return {
       tienCon,
+      taiSanKhac,
       vi: vi.vi,
       thuTuVi: vi.thuTu,
       chuaGanVi: vi.chuaGanVi,
@@ -1149,7 +1165,7 @@ const Logic = (function () {
     LOAI_NO, laKhoanNo, noLamTienRa, soDuNo, tomTatNo,
     NGUONG_SAP_DAO_HAN, themThang, ngayDaoHan, soNgayConLai,
     laiDuKien, trangThaiTietKiem, tomTatTietKiem, tinhHinhHienTai,
-    VI_MAC_DINH, danhSachVi, soDuCacVi, kiemTraChuyenVi,
+    VI_MAC_DINH, danhSachVi, soDuCacVi, kiemTraChuyenVi, laViTaiSan,
     NGUONG_SAP_VUOT, daChiTheoMuc, daChiTheoLo, loCuaKhoan,
     chuanHoaHanMuc, trangThaiHanMuc, tomTatHanMuc,
     boDau, locKhoan, tongKetLoc, lucNhap, KIEU_SAP, sapXepKhoan,
