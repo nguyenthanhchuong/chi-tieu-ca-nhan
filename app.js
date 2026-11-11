@@ -485,7 +485,7 @@ function initNgay() {
 
 // ===== Gọi API =====
 // Tăng mỗi lần sửa app, hiển thị ở màn hình PIN để biết máy đang chạy bản nào.
-const APP_VERSION = "18";
+const APP_VERSION = "19";
 
 // ===== Nhật ký dò lỗi =====
 // Ghi vào localStorage nên còn nguyên kể cả khi trang tự nạp lại — đây là
@@ -2245,6 +2245,8 @@ const DICH_TAI_SAN = [
 
 let tiLeLo = Logic.tiLeMacDinh();
 let loNhanDu = Logic.LO_MAC_DINH_NHAN_DU;
+// Tiền đã nằm sẵn trong từng lọ lúc bắt đầu ghi sổ, song song với số dư đầu ví.
+let soDuDauLo = {};
 
 function thangHienTai() { return Logic.thangKey(new Date()); }
 
@@ -2271,7 +2273,7 @@ function renderJars() {
 
   const thang = thangHienTai();
   const ds = tatCaKhoan();
-  const soDu = Logic.soDuCacLo(ds, thang, tiLeLo);
+  const soDu = Logic.soDuCacLo(ds, thang, tiLeLo, soDuDauLo);
 
   const d = new Date();
   $("jar-month").textContent = `Tháng ${d.getMonth() + 1}/${d.getFullYear()}`;
@@ -2639,8 +2641,8 @@ function moChiTietLo(loKey) {
   if (!lo) return;
 
   const thang = thangHienTai();
-  const ds = Logic.chiTietLo(tatCaKhoan(), loKey, thang, tiLeLo);
-  const soDu = Logic.soDuCacLo(tatCaKhoan(), thang, tiLeLo)[loKey];
+  const ds = Logic.chiTietLo(tatCaKhoan(), loKey, thang, tiLeLo, soDuDauLo);
+  const soDu = Logic.soDuCacLo(tatCaKhoan(), thang, tiLeLo, soDuDauLo)[loKey];
 
   moHopChiTiet(
     lo.ten,
@@ -2676,7 +2678,7 @@ function moChiTietMuc(loai, giaTri) {
 
 // Dồn dư tháng trước: chạy ngầm, ghi lịch sử, không hỏi anh mỗi lần.
 async function chayDonDu() {
-  const lenh = Logic.lenhChuyenTuDong(tatCaKhoan(), thangHienTai(), tiLeLo, loNhanDu);
+  const lenh = Logic.lenhChuyenTuDong(tatCaKhoan(), thangHienTai(), tiLeLo, loNhanDu, soDuDauLo);
   const nhan = $("jar-sweep-note");
   if (!lenh.length) { if (nhan) nhan.hidden = true; return; }
 
@@ -2701,7 +2703,7 @@ async function chayDonDu() {
 
 // ----- Hộp thoại chuyển tiền -----
 function moHopChuyen() {
-  const soDu = Logic.soDuCacLo(tatCaKhoan(), thangHienTai(), tiLeLo);
+  const soDu = Logic.soDuCacLo(tatCaKhoan(), thangHienTai(), tiLeLo, soDuDauLo);
 
   const nguon = $("move-from"), dich = $("move-to");
   nguon.innerHTML = Logic.LOS.map(l =>
@@ -2719,7 +2721,7 @@ function moHopChuyen() {
 }
 
 function capNhatCanhBaoChuyen() {
-  const soDu = Logic.soDuCacLo(tatCaKhoan(), thangHienTai(), tiLeLo);
+  const soDu = Logic.soDuCacLo(tatCaKhoan(), thangHienTai(), tiLeLo, soDuDauLo);
   const kt = Logic.kiemTraChuyen(
     $("move-from").value, $("move-to").value,
     parseAmount($("move-amount").value) || 1, soDu
@@ -2730,7 +2732,7 @@ function capNhatCanhBaoChuyen() {
 }
 
 async function luuChuyenLo() {
-  const soDu = Logic.soDuCacLo(tatCaKhoan(), thangHienTai(), tiLeLo);
+  const soDu = Logic.soDuCacLo(tatCaKhoan(), thangHienTai(), tiLeLo, soDuDauLo);
   const nguon = $("move-from").value, dich = $("move-to").value;
   const tien = parseAmount($("move-amount").value);
   const kt = Logic.kiemTraChuyen(nguon, dich, tien, soDu);
@@ -2840,6 +2842,7 @@ async function napCaiDat() {
     const s = d.settings || {};
     if (s.tiLe && typeof s.tiLe === "object") tiLeLo = s.tiLe;
     if (s.loNhanDu) loNhanDu = s.loNhanDu;
+    if (s.soDuDauLo && typeof s.soDuDauLo === "object") soDuDauLo = s.soDuDauLo;
     if (s.hanMuc && typeof s.hanMuc === "object") hanMuc = s.hanMuc;
     if (s.danhMuc && typeof s.danhMuc === "object") {
       danhMucCfg = Logic.chuanHoaDanhMuc(s.danhMuc);
@@ -2857,6 +2860,75 @@ async function napCaiDat() {
   } catch (err) {
     // Không lấy được thì dùng tỉ lệ mặc định, app vẫn chạy.
   }
+}
+
+// ===== Số dư đầu lọ =====
+function moHopNenLo() {
+  const thangDau = Logic.thangDauSo(tatCaKhoan());
+  $("nenlo-rows").innerHTML = Logic.LOS.map(l => `
+    <div class="nenlo-nhap">
+      <label class="sheet-label">${thoatHtml(l.ten)}
+        <span class="nenlo-kieu">${l.congDon ? "cộng dồn" : "tiêu theo tháng"}</span>
+      </label>
+      <input type="text" class="note-input nenlo-so" data-lo="${l.key}"
+             inputmode="numeric" placeholder="Không đặt"
+             value="${soDuDauLo[l.key] ? formatMoney(soDuDauLo[l.key]) : ""}">
+    </div>`).join("");
+
+  $("nenlo-rows").querySelectorAll(".nenlo-so").forEach(o => {
+    o.addEventListener("input", () => {
+      const am = Logic.coDauAm(o.value);
+      const n = Logic.parseAmountCoAm(o.value);
+      o.value = n ? formatMoney(n) : (am ? "-" : "");
+      capNhatTongNenLo();
+    });
+  });
+  capNhatTongNenLo(thangDau);
+  $("nenlo-error").hidden = true;
+  $("nenlo-sheet").hidden = false;
+}
+
+function capNhatTongNenLo(thangDau) {
+  let tong = 0;
+  $("nenlo-rows").querySelectorAll(".nenlo-so").forEach(o => {
+    tong += Logic.parseAmountCoAm(o.value);
+  });
+  const td = thangDau === undefined ? Logic.thangDauSo(tatCaKhoan()) : thangDau;
+  $("nenlo-total").textContent =
+    `Tổng nền: ${formatMoney(tong)} đ` + (td ? ` · tháng đầu sổ: ${td}` : "");
+}
+
+async function luuNenLo() {
+  const moi = {};
+  $("nenlo-rows").querySelectorAll(".nenlo-so").forEach(o => {
+    const n = Logic.parseAmountCoAm(o.value);
+    if (n) moi[o.dataset.lo] = n;
+  });
+
+  const nut = $("nenlo-ok");
+  nut.disabled = true;
+  nut.textContent = "Đang lưu…";
+  try {
+    await callApi("setSettings", { settings: { soDuDauLo: moi } }, { retries: 2 });
+    soDuDauLo = moi;
+    $("nenlo-sheet").hidden = true;
+    showToast("Đã lưu số dư đầu lọ");
+    render();
+  } catch (err) {
+    $("nenlo-error").textContent = friendlyError(err);
+    $("nenlo-error").hidden = false;
+  } finally {
+    nut.disabled = false;
+    nut.textContent = "Lưu";
+  }
+}
+
+function initNenLo() {
+  if ($("btn-nenlo")) $("btn-nenlo").addEventListener("click", moHopNenLo);
+  if ($("nenlo-cancel")) {
+    $("nenlo-cancel").addEventListener("click", () => { $("nenlo-sheet").hidden = true; });
+  }
+  if ($("nenlo-ok")) $("nenlo-ok").addEventListener("click", luuNenLo);
 }
 
 function initJars() {
@@ -3140,6 +3212,7 @@ function init() {
   renderChips();
   initTabs();
   initJars();
+  initNenLo();
   initEdit();
   initNgay();
   initTim();

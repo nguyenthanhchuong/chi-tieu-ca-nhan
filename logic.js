@@ -247,15 +247,35 @@ const Logic = (function () {
   // Số dư các lọ tính tại thời điểm thangXem ("YYYY-MM").
   // Lọ cộng dồn: tính từ đầu tới hết tháng đó.
   // Lọ theo tháng: chỉ tính trong đúng tháng đó.
-  function soDuCacLo(khoan, thangXem, tiLeHienTai) {
+  // Tháng của khoản sớm nhất trong sổ — mốc để nạp số dư đầu lọ.
+  function thangDauSo(khoan) {
+    let som = "";
+    (khoan || []).forEach(e => {
+      const t = String(e.date || "").slice(0, 7);
+      if (t && (!som || t < som)) som = t;
+    });
+    return som;
+  }
+
+  // soDuDauLo: tiền đã nằm sẵn trong từng lọ lúc bắt đầu ghi sổ, song song với
+  // soDuDau của ví. Không có nó thì muốn nạp nền cho lọ phải bịa một khoản thu,
+  // mà khoản thu giả lại thổi phồng thống kê thu nhập của tháng đó.
+  //
+  // Lọ CỘNG DỒN nhận nền ở mọi tháng (nền là điểm xuất phát của chúng).
+  // Lọ TIÊU-THEO-THÁNG chỉ nhận đúng ở THÁNG ĐẦU SỔ: sang tháng sau chúng
+  // reset, cộng nền lại mỗi tháng là tự nhân tiền ra từ không khí.
+  function soDuCacLo(khoan, thangXem, tiLeHienTai, soDuDauLo) {
     const ds = khoan || [];
     const trongThang = e => String(e.date || "").slice(0, 7) === thangXem;
     const tinhToiNay = e => String(e.date || "").slice(0, 7) <= thangXem;
+    const nen = soDuDauLo || {};
+    const thangDau = thangDauSo(ds);
 
     const kq = {};
     LOS.forEach(lo => {
       const lay = lo.congDon ? tinhToiNay : trongThang;
-      let vao = 0, ra = 0;
+      let vao = (lo.congDon || thangXem === thangDau) ? (Number(nen[lo.key]) || 0) : 0;
+      let ra = 0;
 
       ds.filter(lay).forEach(e => {
         if (laKhoanThu(e)) {
@@ -278,7 +298,7 @@ const Logic = (function () {
   // Liệt kê mọi khoản đã tác động lên một lọ, mới nhất lên đầu.
   // Dùng đúng bộ lọc thời gian như soDuCacLo, nhờ vậy cộng lại luôn ra
   // đúng số dư đang hiện — nếu lệch thì người dùng không hiểu số ở đâu ra.
-  function chiTietLo(khoan, loKey, thangXem, tiLeHienTai) {
+  function chiTietLo(khoan, loKey, thangXem, tiLeHienTai, soDuDauLo) {
     const lo = timLo(loKey);
     if (!lo) return [];
 
@@ -312,6 +332,14 @@ const Logic = (function () {
                   note: [e.payer, e.note].filter(Boolean).join(" · ") });
       }
     });
+
+    // Nền đầu sổ phải hiện thành một dòng, nếu không cộng chi tiết lại sẽ
+    // không ra số dư đang hiện và người dùng không hiểu số ở đâu ra.
+    const nenLo = Number((soDuDauLo || {})[loKey]) || 0;
+    if (nenLo && (lo.congDon || thangXem === thangDauSo(khoan))) {
+      ra.push({ date: "", tien: nenLo, chieu: "vao",
+                moTa: "Số dư đầu sổ", note: "" });
+    }
 
     return ra.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
   }
@@ -409,7 +437,7 @@ const Logic = (function () {
   // Phần dư của các lọ theo tháng ở những tháng ĐÃ QUA mà chưa được chuyển đi.
   // Bình thường luôn bằng 0 vì app tự chuyển; khác 0 nghĩa là có lệnh chuyển
   // chưa gửi được, tiền vẫn còn trên sổ chứ không bốc hơi.
-  function duChuaChuyen(khoan, thangHienTai, tiLeHienTai) {
+  function duChuaChuyen(khoan, thangHienTai, tiLeHienTai, soDuDauLo) {
     const ds = khoan || [];
     const cacThang = [...new Set(ds.map(e => String(e.date || "").slice(0, 7)))]
       .filter(t => t && t < thangHienTai)
@@ -417,7 +445,7 @@ const Logic = (function () {
 
     const ra = [];
     cacThang.forEach(thang => {
-      const soDu = soDuCacLo(ds, thang, tiLeHienTai);
+      const soDu = soDuCacLo(ds, thang, tiLeHienTai, soDuDauLo);
       LOS.filter(l => !l.congDon).forEach(lo => {
         const con = soDu[lo.key].con;
         if (con > 0) ra.push({ thang, lo: lo.key, ten: lo.ten, tien: con });
@@ -433,11 +461,11 @@ const Logic = (function () {
   }
 
   // Dựng các lệnh chuyển tự động cho phần dư tháng trước.
-  function lenhChuyenTuDong(khoan, thangHienTai, tiLeHienTai, loNhan) {
+  function lenhChuyenTuDong(khoan, thangHienTai, tiLeHienTai, loNhan, soDuDauLo) {
     const dich = loNhan || LO_MAC_DINH_NHAN_DU;
     const daCo = new Set((khoan || []).filter(laChuyenLo).map(e => e.id));
 
-    return duChuaChuyen(khoan, thangHienTai, tiLeHienTai)
+    return duChuaChuyen(khoan, thangHienTai, tiLeHienTai, soDuDauLo)
       .filter(d => d.lo !== dich)
       .map(d => ({
         id: maChuyenTuDong(d.thang, d.lo),
@@ -1131,7 +1159,7 @@ const Logic = (function () {
     LOS, LO_MAC_DINH_NHAN_DU, timLo, tiLeMacDinh, doanLo,
     DANH_MUC_CHI_MAC_DINH, DANH_MUC_THU_MAC_DINH,
     chuanHoaDanhMuc, datDanhMucChi, demKhoanTheoDanhMuc,
-    phanBo, phanBoCuaKhoanThu, soDuCacLo, chiTietLo, chiTietMuc, khoanCuaMuc, duChuaChuyen,
+    phanBo, phanBoCuaKhoanThu, soDuCacLo, thangDauSo, chiTietLo, chiTietMuc, khoanCuaMuc, duChuaChuyen,
     maChuyenTuDong, lenhChuyenTuDong, ngayCuoiThang, kiemTraChuyen
   };
 })();

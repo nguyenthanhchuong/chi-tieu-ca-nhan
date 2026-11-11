@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Chi Tiêu Cá Nhân">
-<link rel="stylesheet" href="style.css?v=18">
+<link rel="stylesheet" href="style.css?v=19">
 </head>
 <body>
 
@@ -159,7 +159,10 @@
     <section class="jars">
       <div class="jar-head">
         <span class="jar-month" id="jar-month">—</span>
-        <button type="button" class="link-btn" id="btn-tile">Chỉnh tỉ lệ</button>
+        <span class="jar-head-nut">
+          <button type="button" class="link-btn" id="btn-nenlo">Số dư đầu lọ</button>
+          <button type="button" class="link-btn" id="btn-tile">Chỉnh tỉ lệ</button>
+        </span>
       </div>
 
       <p class="jar-note" id="jar-sweep-note" hidden></p>
@@ -491,6 +494,29 @@
     </div>
   </div>
 
+  <!-- Hộp nhập số dư đầu lọ: tiền đã nằm sẵn trong lọ lúc bắt đầu ghi sổ -->
+  <div class="sheet" id="nenlo-sheet" hidden>
+    <div class="sheet-card">
+      <h3 class="sheet-title">Số dư đầu lọ</h3>
+      <p class="sheet-sub">Tiền đã nằm sẵn trong từng lọ lúc <strong>bắt đầu ghi sổ</strong>,
+         giống số dư đầu của ví. Nhờ nó anh không phải bịa một khoản thu để nạp
+         nền cho lọ — khoản thu giả sẽ thổi phồng thống kê thu nhập tháng đó.<br>
+         Lọ <strong>cộng dồn</strong> nhận nền ở mọi tháng. Lọ
+         <strong>tiêu theo tháng</strong> chỉ nhận ở tháng đầu sổ, vì sang
+         tháng sau chúng reset; phần không tiêu hết sẽ được dồn như thường lệ.</p>
+
+      <div id="nenlo-rows"></div>
+
+      <p class="ratio-total" id="nenlo-total">—</p>
+      <p class="entry-error" id="nenlo-error" hidden></p>
+
+      <div class="sheet-actions">
+        <button type="button" class="btn-ghost" id="nenlo-cancel">Huỷ</button>
+        <button type="button" class="btn-primary" id="nenlo-ok">Lưu</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Hộp thoại chỉnh tỉ lệ -->
   <div class="sheet" id="ratio-sheet" hidden>
     <div class="sheet-card">
@@ -558,7 +584,7 @@
   <div class="toast" id="toast" hidden></div>
 </div>
 
-<script src="logic.js?v=18"></script>
-<script src="app.js?v=18"></script>
+<script src="logic.js?v=19"></script>
+<script src="app.js?v=19"></script>
 </body>
 </html>

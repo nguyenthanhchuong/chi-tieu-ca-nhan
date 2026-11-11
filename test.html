@@ -1495,6 +1495,81 @@ test("ĐỐI CHỨNG: trạng thái đã sạch trước khi sang nhóm sau", ()
   bang(Logic.doanLo("Học tập"), "EDU");
 });
 
+nhom("Số dư đầu lọ");
+
+// Sổ bắt đầu tháng 9, có một khoản chi Thiết yếu ở tháng 10.
+function soMauNenLo() {
+  return [
+    { id: "1000000000001-1", date: "2026-09-15", type: "Chi", category: "Ăn uống",
+      amount: 500000, jar: "NEC", wallet: "Tiền mặt" },
+    { id: "1000000000002-2", date: "2026-10-05", type: "Chi", category: "Ăn uống",
+      amount: 300000, jar: "NEC", wallet: "Tiền mặt" }
+  ];
+}
+
+test("không truyền nền thì kết quả y như trước (tương thích ngược)", () => {
+  const a = Logic.soDuCacLo(soMauNenLo(), "2026-09", null);
+  const b = Logic.soDuCacLo(soMauNenLo(), "2026-09", null, {});
+  bang(a.NEC.con, b.NEC.con);
+  bang(a.SAVE.con, b.SAVE.con);
+});
+
+test("lọ CỘNG DỒN nhận nền ở mọi tháng", () => {
+  const nen = { SAVE: 10000000 };
+  bang(Logic.soDuCacLo(soMauNenLo(), "2026-09", null, nen).SAVE.con, 10000000, "tháng đầu");
+  bang(Logic.soDuCacLo(soMauNenLo(), "2026-10", null, nen).SAVE.con, 10000000, "tháng sau");
+  bang(Logic.soDuCacLo(soMauNenLo(), "2026-12", null, nen).SAVE.con, 10000000, "tháng xa hơn");
+});
+
+test("lọ TIÊU THEO THÁNG chỉ nhận nền ở tháng đầu sổ", () => {
+  const nen = { NEC: 5000000 };
+  // tháng 9 là tháng đầu: 5.000.000 − 500.000
+  bang(Logic.soDuCacLo(soMauNenLo(), "2026-09", null, nen).NEC.con, 4500000, "tháng đầu");
+  // tháng 10 KHÔNG nhận lại nền, nếu nhận là tự nhân tiền ra từ không khí
+  bang(Logic.soDuCacLo(soMauNenLo(), "2026-10", null, nen).NEC.con, -300000, "tháng sau");
+});
+
+test("thangDauSo lấy đúng tháng sớm nhất, bỏ qua khoản thiếu ngày", () => {
+  bang(Logic.thangDauSo(soMauNenLo()), "2026-09");
+  bang(Logic.thangDauSo([{ id: "1-1" }, { id: "2-2", date: "2026-03-20" }]), "2026-03");
+  bang(Logic.thangDauSo([]), "");
+  bang(Logic.thangDauSo(null), "");
+});
+
+test("nền âm vẫn nhận (lọ đang bị tiêu lẹm từ trước)", () => {
+  bang(Logic.soDuCacLo(soMauNenLo(), "2026-09", null, { SAVE: -2000000 }).SAVE.con, -2000000);
+});
+
+test("phần nền chưa tiêu hết của lọ tháng được dồn như khoản thu thường", () => {
+  // Tháng 9 nền NEC 5tr, tiêu 500k → dư 4,5tr. Xem ở tháng 10 thì lệnh dồn
+  // phải sinh ra, nếu không tiền nền biến mất khi sang tháng.
+  const lenh = Logic.lenhChuyenTuDong(soMauNenLo(), "2026-10", null, "SAVE", { NEC: 5000000 });
+  const cuaNEC = lenh.filter(l => l.jar === "NEC");
+  bang(cuaNEC.length, 1, "có đúng một lệnh dồn cho Thiết yếu");
+  bang(cuaNEC[0].amount, 4500000);
+  bang(cuaNEC[0].jarTo, "SAVE");
+});
+
+test("không có nền thì tháng 9 không dư, không sinh lệnh dồn", () => {
+  const lenh = Logic.lenhChuyenTuDong(soMauNenLo(), "2026-10", null, "SAVE", {});
+  bang(lenh.filter(l => l.jar === "NEC").length, 0);
+});
+
+test("chi tiết lọ có dòng nền, cộng lại khớp số dư đang hiện", () => {
+  const nen = { SAVE: 10000000, NEC: 5000000 };
+  ["SAVE", "NEC"].forEach(k => {
+    const ct = Logic.chiTietLo(soMauNenLo(), k, "2026-09", null, nen);
+    const tong = ct.reduce((s, d) => s + (d.chieu === "vao" ? d.tien : -d.tien), 0);
+    bang(tong, Logic.soDuCacLo(soMauNenLo(), "2026-09", null, nen)[k].con, k);
+    bang(ct.some(d => d.moTa === "Số dư đầu sổ"), true, k + " có dòng nền");
+  });
+});
+
+test("chi tiết lọ THÁNG ở tháng sau không còn dòng nền", () => {
+  const ct = Logic.chiTietLo(soMauNenLo(), "NEC", "2026-10", null, { NEC: 5000000 });
+  bang(ct.some(d => d.moTa === "Số dư đầu sổ"), false);
+});
+
 (function veKetQua() {
   const dat = ketQua.filter(k => k.dat).length;
   const hong = ketQua.length - dat;

@@ -1409,3 +1409,17 @@ body {
   margin: 6px 2px 0;
   line-height: 1.5;
 }
+  line-height: 1.5;
+}
+
+/* ===== Số dư đầu lọ ===== */
+.jar-head-nut { display: flex; gap: 12px; align-items: center; }
+.nenlo-nhap { margin-bottom: 10px; }
+.nenlo-nhap .sheet-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 4px;
+}
+.nenlo-kieu { font-size: 11px; color: var(--muted); font-weight: 400; }
+.nenlo-nhap .nenlo-so { width: 100%; }
