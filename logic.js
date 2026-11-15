@@ -864,6 +864,9 @@ const Logic = (function () {
     // Ký tự không phải chữ thì hoa/thường như nhau. Nhờ vậy "3 ly cà phê"
     // không bị thành "3 Ly cà phê".
     if (dau.toLowerCase() === dau.toUpperCase()) return t;
+    // Chữ thứ HAI đã hoa thì để yên: "iPhone", "eBay" là cố ý viết vậy.
+    const hai = t.charAt(1);
+    if (hai && hai !== hai.toLowerCase()) return t;
     return dau.toUpperCase() + t.slice(1);
   }
 

@@ -1653,6 +1653,14 @@ test("KHÔNG đụng tới phần còn lại của câu", () => {
   bang(Logic.hoaChuDau("Coop Bình Minh"), "Coop Bình Minh", "đã hoa sẵn thì giữ nguyên");
 });
 
+test("chữ thứ hai đã hoa thì để nguyên cả từ", () => {
+  bang(Logic.hoaChuDau("iPhone 18"), "iPhone 18", "tên sản phẩm viết vậy là cố ý");
+  bang(Logic.hoaChuDau("eBay"), "eBay");
+  // Đối chứng: chữ thứ hai thường thì vẫn phải viết hoa như bình thường.
+  bang(Logic.hoaChuDau("ip 18"), "Ip 18", "không có chữ hoa thứ hai");
+  bang(Logic.hoaChuDau("i"), "I", "một ký tự, không có chữ thứ hai");
+});
+
 test("ký tự đầu không phải chữ thì để yên", () => {
   bang(Logic.hoaChuDau("3 ly cà phê"), "3 ly cà phê", "bắt đầu bằng số");
   bang(Logic.hoaChuDau("(tạm ứng)"), "(tạm ứng)", "bắt đầu bằng dấu ngoặc");

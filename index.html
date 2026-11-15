@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Chi Tiêu Cá Nhân">
-<link rel="stylesheet" href="style.css?v=21">
+<link rel="stylesheet" href="style.css?v=22">
 </head>
 <body>
 
@@ -87,8 +87,12 @@
            thật sự tiêu vào cái gì. Chip gợi ý nằm ngay dưới để đỡ phải gõ lại
            tiếng Việt có dấu — bấm một cái là xong. -->
       <label class="note-label" for="note">Nội dung <span class="bat-buoc">*</span></label>
+      <!-- KHÔNG đặt autocomplete="off" ở đây. Ô này không nằm trong <form>
+           và không có name nên trình duyệt chẳng có gì để tự điền — thuộc tính
+           đó vô dụng. Nhưng Chrome trên Android lại dịch nó thành cờ "không
+           gợi ý", và Gboard khi thấy cờ này sẽ tắt luôn cả TỰ VIẾT HOA. -->
       <input type="text" id="note" class="note-input"
-             autocomplete="off" autocapitalize="sentences"
+             autocapitalize="sentences"
              placeholder="VD: Hủ tíu Nam Vang">
       <div class="chips goi-y" id="note-goiy"></div>
 
@@ -592,7 +596,7 @@
   <div class="toast" id="toast" hidden></div>
 </div>
 
-<script src="logic.js?v=21"></script>
-<script src="app.js?v=21"></script>
+<script src="logic.js?v=22"></script>
+<script src="app.js?v=22"></script>
 </body>
 </html>

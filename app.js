@@ -485,7 +485,7 @@ function initNgay() {
 
 // ===== Gọi API =====
 // Tăng mỗi lần sửa app, hiển thị ở màn hình PIN để biết máy đang chạy bản nào.
-const APP_VERSION = "21";
+const APP_VERSION = "22";
 
 // ===== Nhật ký dò lỗi =====
 // Ghi vào localStorage nên còn nguyên kể cả khi trang tự nạp lại — đây là
@@ -3276,6 +3276,18 @@ function init() {
 
   // Vừa gõ vừa lọc gợi ý, không dấu cũng ra
   $("note").addEventListener("input", capNhatGoiYNhap);
+
+  // Lưới an toàn: bàn phím nào không chịu tự viết hoa thì lúc rời ô vẫn hoa.
+  // Làm ở blur chứ KHÔNG ở input: sửa giá trị giữa lúc gõ sẽ phá bộ gõ tiếng
+  // Việt (Telex đang ghép "u" + "r" thành "ủ" mà bị đổi ký tự là hỏng).
+  ["note", "edit-note", "cv-note", "move-note", "no-note"].forEach(id => {
+    const o = $(id);
+    if (!o) return;
+    o.addEventListener("blur", () => {
+      const moi = Logic.hoaChuDau(o.value);
+      if (moi !== o.value) o.value = moi;
+    });
+  });
 
   $("btn-save").addEventListener("click", saveEntry);
 
