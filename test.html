@@ -1638,6 +1638,41 @@ test("cấu hình ví kiểu cũ (chưa có khoá taiSan) chạy y như trước
   bang(t.rong, 50000000);
 });
 
+nhom("Viết hoa chữ đầu nội dung");
+
+test("viết hoa chữ cái đầu, kể cả chữ có dấu", () => {
+  bang(Logic.hoaChuDau("hủ tíu nam vang"), "Hủ tíu nam vang");
+  bang(Logic.hoaChuDau("ăn sáng"), "Ăn sáng", "nguyên âm có dấu");
+  bang(Logic.hoaChuDau("đổ xăng"), "Đổ xăng", "chữ đ");
+  bang(Logic.hoaChuDau("ơn trời"), "Ơn trời");
+});
+
+test("KHÔNG đụng tới phần còn lại của câu", () => {
+  bang(Logic.hoaChuDau("mua iPhone"), "Mua iPhone", "giữ chữ hoa giữa từ");
+  bang(Logic.hoaChuDau("rút ATM"), "Rút ATM", "giữ viết tắt in hoa");
+  bang(Logic.hoaChuDau("Coop Bình Minh"), "Coop Bình Minh", "đã hoa sẵn thì giữ nguyên");
+});
+
+test("ký tự đầu không phải chữ thì để yên", () => {
+  bang(Logic.hoaChuDau("3 ly cà phê"), "3 ly cà phê", "bắt đầu bằng số");
+  bang(Logic.hoaChuDau("(tạm ứng)"), "(tạm ứng)", "bắt đầu bằng dấu ngoặc");
+});
+
+test("cắt khoảng trắng thừa và chịu được đầu vào rỗng", () => {
+  bang(Logic.hoaChuDau("   cà phê  "), "Cà phê");
+  bang(Logic.hoaChuDau(""), "");
+  bang(Logic.hoaChuDau("   "), "");
+  bang(Logic.hoaChuDau(null), "");
+  bang(Logic.hoaChuDau(undefined), "");
+});
+
+test("viết hoa KHÔNG làm tách nhóm gợi ý nội dung", () => {
+  // Gom nhóm đi qua boDau nên không phân biệt hoa thường. Nếu phép thử này
+  // hỏng thì mỗi khoản cũ gõ thường sẽ tách thành một dòng riêng.
+  bang(Logic.khoaNoiDung(Logic.hoaChuDau("cà phê")),
+       Logic.khoaNoiDung("cà phê"));
+});
+
 (function veKetQua() {
   const dat = ketQua.filter(k => k.dat).length;
   const hong = ketQua.length - dat;

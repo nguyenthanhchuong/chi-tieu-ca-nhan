@@ -855,6 +855,18 @@ const Logic = (function () {
   // "Nội dung" là thứ anh thật sự tiêu: danh mục là Ăn uống, nội dung là
   // "Hủ tíu Nam Vang". Đây vốn là cột Ghi chú, nay thành bắt buộc.
 
+  // Viết hoa chữ cái đầu của nội dung. Chỉ ĐÚNG chữ đầu, phần còn lại giữ
+  // nguyên: "ATM", "Coop Bình Minh", "iPhone" phải sống sót qua đây.
+  function hoaChuDau(s) {
+    const t = String(s || "").trim();
+    if (!t) return "";
+    const dau = t.charAt(0);
+    // Ký tự không phải chữ thì hoa/thường như nhau. Nhờ vậy "3 ly cà phê"
+    // không bị thành "3 Ly cà phê".
+    if (dau.toLowerCase() === dau.toUpperCase()) return t;
+    return dau.toUpperCase() + t.slice(1);
+  }
+
   // Khoá gom nhóm: bỏ dấu, gộp khoảng trắng. Nhờ vậy "Coop Bình Minh"
   // và "coop binh minh" được tính là một — nếu không, mỗi lần gõ lệch
   // một dấu là báo cáo tách thành hai dòng riêng.
@@ -1169,7 +1181,7 @@ const Logic = (function () {
     NGUONG_SAP_VUOT, daChiTheoMuc, daChiTheoLo, loCuaKhoan,
     chuanHoaHanMuc, trangThaiHanMuc, tomTatHanMuc,
     boDau, locKhoan, tongKetLoc, lucNhap, KIEU_SAP, sapXepKhoan,
-    khoaNoiDung, goiYNoiDung, gomTheoNoiDung,
+    khoaNoiDung, hoaChuDau, goiYNoiDung, gomTheoNoiDung,
     khoangKy, nhanKy, trongKhoang, tongHopKy, friendlyError,
     // Bốn chiếc lọ
     LOS, LO_MAC_DINH_NHAN_DU, timLo, tiLeMacDinh, doanLo,

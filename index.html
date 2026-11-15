@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Chi Tiêu Cá Nhân">
-<link rel="stylesheet" href="style.css?v=20">
+<link rel="stylesheet" href="style.css?v=21">
 </head>
 <body>
 
@@ -88,7 +88,8 @@
            tiếng Việt có dấu — bấm một cái là xong. -->
       <label class="note-label" for="note">Nội dung <span class="bat-buoc">*</span></label>
       <input type="text" id="note" class="note-input"
-             autocomplete="off" placeholder="VD: Hủ tíu Nam Vang">
+             autocomplete="off" autocapitalize="sentences"
+             placeholder="VD: Hủ tíu Nam Vang">
       <div class="chips goi-y" id="note-goiy"></div>
 
       <!-- Ảnh hoá đơn. Không đặt capture="environment": để trống thì điện
@@ -252,7 +253,8 @@
       <input type="date" class="sheet-select" id="no-date">
 
       <label class="sheet-label" for="no-note">Ghi chú</label>
-      <input type="text" class="note-input" id="no-note" placeholder="Không bắt buộc">
+      <input type="text" class="note-input" id="no-note" autocapitalize="sentences"
+             placeholder="Không bắt buộc">
 
       <p class="entry-error" id="no-error" hidden></p>
 
@@ -328,7 +330,8 @@
       <input type="date" class="sheet-select" id="cv-date">
 
       <label class="sheet-label" for="cv-note">Ghi chú</label>
-      <input type="text" class="note-input" id="cv-note" placeholder="Không bắt buộc">
+      <input type="text" class="note-input" id="cv-note" autocapitalize="sentences"
+             placeholder="Không bắt buộc">
 
       <p class="entry-error" id="cv-error" hidden></p>
 
@@ -421,7 +424,8 @@
       <input type="text" class="note-input" id="move-amount" inputmode="numeric" placeholder="0">
 
       <label class="sheet-label" for="move-note">Ghi chú</label>
-      <input type="text" class="note-input" id="move-note" placeholder="Không bắt buộc">
+      <input type="text" class="note-input" id="move-note" autocapitalize="sentences"
+             placeholder="Không bắt buộc">
 
       <p class="sheet-warn" id="move-warn" hidden></p>
       <p class="entry-error" id="move-error" hidden></p>
@@ -472,7 +476,8 @@
       <select class="sheet-select" id="edit-wallet"></select>
 
       <label class="sheet-label" for="edit-note">Nội dung <span class="bat-buoc">*</span></label>
-      <input type="text" class="note-input" id="edit-note" placeholder="VD: Hủ tíu Nam Vang">
+      <input type="text" class="note-input" id="edit-note" autocapitalize="sentences"
+             placeholder="VD: Hủ tíu Nam Vang">
       <div class="chips goi-y" id="edit-note-goiy"></div>
 
       <div class="edit-anh" id="edit-anh" hidden>
@@ -587,7 +592,7 @@
   <div class="toast" id="toast" hidden></div>
 </div>
 
-<script src="logic.js?v=20"></script>
-<script src="app.js?v=20"></script>
+<script src="logic.js?v=21"></script>
+<script src="app.js?v=21"></script>
 </body>
 </html>

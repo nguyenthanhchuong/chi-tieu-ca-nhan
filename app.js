@@ -485,7 +485,7 @@ function initNgay() {
 
 // ===== Gọi API =====
 // Tăng mỗi lần sửa app, hiển thị ở màn hình PIN để biết máy đang chạy bản nào.
-const APP_VERSION = "20";
+const APP_VERSION = "21";
 
 // ===== Nhật ký dò lỗi =====
 // Ghi vào localStorage nên còn nguyên kể cả khi trang tự nạp lại — đây là
@@ -948,7 +948,7 @@ async function luuChuyenVi() {
     date: $("cv-date").value || ngayHomNay(),
     amount: tien,
     category: "Chuyển ví",
-    note: $("cv-note").value.trim(),
+    note: Logic.hoaChuDau($("cv-note").value),
     payer: selectedPayer,
     type: "Chuyển ví",
     wallet: tu,
@@ -1445,7 +1445,7 @@ async function luuNo() {
     date: $("no-date").value || ngayHomNay(),
     amount: tien,
     category: loai,
-    note: $("no-note").value.trim(),
+    note: Logic.hoaChuDau($("no-note").value),
     payer: selectedPayer,
     type: loai,
     doiTuong: ai,
@@ -2515,7 +2515,7 @@ async function luuSuaKhoan() {
 
   // Chặn cả ở đây, nếu không thì sửa một khoản là xoá sạch nội dung được —
   // bắt buộc ở màn nhập mà bỏ ngỏ ở màn sửa thì coi như không bắt buộc.
-  const noiDungMoi = $("edit-note").value.trim();
+  const noiDungMoi = Logic.hoaChuDau($("edit-note").value);
   if (!noiDungMoi) {
     loi.textContent = "Nội dung không được để trống.";
     loi.hidden = false;
@@ -2795,7 +2795,7 @@ async function luuChuyenLo() {
     jar: nguon,
     jarTo: dich,
     category: "Chuyển lọ",
-    note: $("move-note").value.trim(),
+    note: Logic.hoaChuDau($("move-note").value),
     payer: selectedPayer
   };
 
@@ -3049,7 +3049,7 @@ async function saveEntry() {
 
   // Nội dung bắt buộc. Danh mục chỉ nói "Ăn uống", nội dung mới nói "Hủ tíu
   // Nam Vang" — thiếu nó thì vài tháng sau nhìn lại không nhớ tiêu vào đâu.
-  const noiDung = $("note").value.trim();
+  const noiDung = Logic.hoaChuDau($("note").value);
   if (!noiDung) {
     error.textContent = "Anh ghi nội dung nhé, ví dụ “Hủ tíu Nam Vang”.";
     error.hidden = false;
